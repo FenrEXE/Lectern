@@ -55,6 +55,22 @@ export const googleMistborn = {
   ],
 };
 
+export const openLibraryMistborn = {
+  numFound: 1,
+  docs: [
+    {
+      key: '/works/OL5738148W',
+      title: 'The Final Empire',
+      author_name: ['Brandon Sanderson'],
+      first_publish_year: 2006,
+      isbn: ['0765311780', '9780765311788'],
+      cover_i: 12345,
+      series: ['Mistborn ; 1'],
+    },
+    { title: 'No key, skipped' },
+  ],
+};
+
 export const mamFinalEmpire = {
   perpage: 50,
   start: 0,

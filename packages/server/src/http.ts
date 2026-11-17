@@ -32,7 +32,9 @@ export async function getJson(
     throw new HttpError(`Couldn't reach ${new URL(url).host}: ${(err as Error).message}`);
   }
   if (!res.ok) {
-    throw new HttpError(`${new URL(url).host} answered ${res.status}`, res.status);
+    // Keep the start of the body: it usually says why (e.g. "Quota exceeded").
+    const detail = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200);
+    throw new HttpError(`${new URL(url).host} answered ${res.status}${detail ? `: ${detail}` : ''}`, res.status);
   }
   return res.json();
 }

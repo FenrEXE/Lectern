@@ -28,7 +28,14 @@ export interface Book {
 }
 
 /** Where a suggestion's details came from. */
-export type MetadataSource = 'audible' | 'google';
+export type MetadataSource = 'audible' | 'google' | 'openlibrary';
+
+/** A source that couldn't help with this search, and why. */
+export interface SourceProblem {
+  source: MetadataSource;
+  /** 'limit': over its request limit for now. 'error': anything else. */
+  reason: 'limit' | 'error';
+}
 
 /** One entry in the "Did you mean" list. */
 export interface BookSuggestion extends Book {
@@ -46,8 +53,8 @@ export interface SuggestResponse {
   /** The query with typos corrected, when Lectern is confident; else absent. */
   didYouMean?: string;
   suggestions: BookSuggestion[];
-  /** Sources that failed (the others still answered). */
-  failedSources: MetadataSource[];
+  /** Sources that couldn't help this time (the others still answered). */
+  problems: SourceProblem[];
 }
 
 /** A torrent on MAM, simplified. */

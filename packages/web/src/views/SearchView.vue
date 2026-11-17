@@ -52,7 +52,7 @@ function setKind(k: MediaKind): void {
   void router.replace({ query: { ...route.query, kind: k } });
 }
 
-const sourceNames = { audible: 'Audible', google: 'Google Books' } as const;
+const sourceNames = { audible: 'Audible', google: 'Google Books', openlibrary: 'Open Library' } as const;
 </script>
 
 <template>
@@ -95,8 +95,12 @@ const sourceNames = { audible: 'Audible', google: 'Google Books' } as const;
       Did you mean
       <RouterLink :to="{ query: { q: result.didYouMean, kind } }">{{ result.didYouMean }}</RouterLink>?
     </p>
-    <p v-if="result.failedSources.length" class="muted small">
-      {{ result.failedSources.map((s) => sourceNames[s]).join(' and ') }} didn’t answer, so some books may be missing.
+    <p v-for="p in result.problems" :key="p.source" class="muted small">
+      <template v-if="p.reason === 'limit'">
+        {{ sourceNames[p.source] }} has hit its request limit for now, so some books may be missing.
+        <template v-if="p.source === 'google'">Adding a Google Books API key fixes this.</template>
+      </template>
+      <template v-else>{{ sourceNames[p.source] }} didn’t answer, so some books may be missing.</template>
     </p>
 
     <p v-if="result.suggestions.length === 0" class="notice">

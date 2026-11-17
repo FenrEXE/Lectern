@@ -11,7 +11,8 @@ import { parseAudible } from '../src/metadata/audible.js';
 import { parseGoogleBooks } from '../src/metadata/googleBooks.js';
 import { buildQueries, checkAvailability, scoreTorrent } from '../src/search/availability.js';
 import { suggestBooks } from '../src/search/suggest.js';
-import { audibleMistborn, fakeFetch, googleMistborn, json, mamFinalEmpire } from './fixtures.js';
+import { audibleMistborn, fakeFetch, googleMistborn, json, mamFinalEmpire, openLibraryMistborn } from './fixtures.js';
+import { parseOpenLibrary } from '../src/metadata/openLibrary.js';
 
 const noWeb = path.join(os.tmpdir(), 'lectern-no-web');
 const finalEmpire = {
@@ -25,6 +26,7 @@ function metadataFetch() {
   return fakeFetch([
     [/api\.audible\.com/, () => json(audibleMistborn)],
     [/googleapis\.com/, () => json(googleMistborn)],
+    [/openlibrary\.org/, () => json(openLibraryMistborn)],
   ]);
 }
 
@@ -83,7 +85,7 @@ describe('suggestBooks', () => {
       'audiobook',
     );
     expect(res.didYouMean).toBe('brandon sanderson mistborn');
-    expect(res.failedSources).toEqual([]);
+    expect(res.problems).toEqual([]);
     // The Final Empire appears once, from Audible, with Google's ISBN merged in.
     const finals = res.suggestions.filter((s) => /final empire/i.test(`${s.title} ${s.subtitle}`));
     expect(finals).toHaveLength(1);
@@ -109,13 +111,56 @@ describe('suggestBooks', () => {
     ]);
     const deps = { db, config: loadConfig({}), fetch: fetchFn };
     const first = await suggestBooks(deps, 'mistborn', 'audiobook');
-    expect(first.failedSources).toEqual(['google']);
+    expect(first.problems).toEqual([{ source: 'google', reason: 'error' }]);
     expect(first.suggestions.length).toBeGreaterThan(0);
     const callsAfterFirst = fetchFn.calls.length;
     await suggestBooks(deps, 'Mistborn!', 'audiobook'); // same words → Audible from cache
     const audibleCalls = fetchFn.calls.filter((c) => c.url.includes('audible')).length;
     expect(audibleCalls).toBe(1);
     expect(fetchFn.calls.length).toBe(callsAfterFirst + 1); // only Google retried
+  });
+});
+
+describe('Open Library and Google limits', () => {
+  it('reads Open Library results, including series and covers', () => {
+    const [book] = parseOpenLibrary(openLibraryMistborn);
+    expect(book).toMatchObject({
+      title: 'The Final Empire',
+      authors: ['Brandon Sanderson'],
+      isbn: '9780765311788',
+      series: [{ name: 'Mistborn', number: '1' }],
+      coverUrl: 'https://covers.openlibrary.org/b/id/12345-M.jpg',
+    });
+  });
+
+  it('rests Google for an hour after "quota exceeded" and uses Open Library meanwhile', async () => {
+    const db = openMemoryDb();
+    const fetchFn = fakeFetch([
+      [/api\.audible\.com/, () => json(audibleMistborn)],
+      [/googleapis\.com/, () => json({ error: { code: 403, message: 'Quota exceeded for quota metric' } }, { status: 403 })],
+      [/openlibrary\.org/, () => json(openLibraryMistborn)],
+    ]);
+    const deps = { db, config: loadConfig({}), fetch: fetchFn };
+
+    const first = await suggestBooks(deps, 'mistborn', 'audiobook');
+    expect(first.problems).toEqual([{ source: 'google', reason: 'limit' }]);
+    expect(fetchFn.calls.some((c) => c.url.includes('openlibrary'))).toBe(false);
+
+    const second = await suggestBooks(deps, 'final empire', 'audiobook');
+    expect(second.problems).toEqual([{ source: 'google', reason: 'limit' }]);
+    expect(fetchFn.calls.filter((c) => c.url.includes('googleapis'))).toHaveLength(1);
+    expect(fetchFn.calls.some((c) => c.url.includes('openlibrary'))).toBe(true);
+  });
+
+  it('asks Open Library for ebooks and merges it with Google', async () => {
+    const res = await suggestBooks(
+      { db: openMemoryDb(), config: loadConfig({}), fetch: metadataFetch() },
+      'final empire sanderson',
+      'ebook',
+    );
+    const finals = res.suggestions.filter((s) => /final empire/i.test(`${s.title} ${s.subtitle}`));
+    expect(finals).toHaveLength(1);
+    expect(finals[0]?.source).toBe('google');
   });
 });
 

@@ -102,7 +102,13 @@ docker build -t lectern .
 ### Metadata
 - Search suggestions come from Audible's public catalogue (best for audio:
   forgiving of typos, knows series) and Google Books (best for ebooks: ISBNs).
-  They're merged so each book appears once, and cached for 24 hours.
+  Open Library is the backup: always asked for ebooks, and for audiobooks while
+  Google is resting. Results are merged so each book appears once, and cached
+  for 24 hours.
+- Google Books without a key shares a quota with everyone else's keyless
+  requests, which runs out. Set `GOOGLE_BOOKS_API_KEY`. After any "quota
+  exceeded" (429, or a 403 that mentions quota), a source rests for an hour
+  instead of being retried on every search.
 - Fallback order when importing: Audible data (via Audnexus) for audio, then
   Google Books, Open Library, Hardcover, the MAM listing, and finally the file's
   embedded tags.
