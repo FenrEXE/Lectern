@@ -1,0 +1,15 @@
+# Example for running Lectern next to qBittorrent and Audiobookshelf.
+# Copy to docker-compose.yml, put your settings in .env (see .env.example),
+# and adjust the data folder. No published image yet, so it builds from source.
+services:
+  lectern:
+    build: .
+    container_name: lectern
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data

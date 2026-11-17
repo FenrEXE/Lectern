@@ -1,0 +1,59 @@
+/* Lectern's colours and base styles. Forest green and cream, light and dark. */
+:root {
+  --green-900: #13261c;
+  --green-800: #1f3a2e;
+  --green-700: #2c4f3e;
+  --green-500: #4e7a5f;
+  --cream-50: #fbf7ee;
+  --cream-100: #f1e6cf;
+  --cream-300: #d9caa6;
+
+  --bg: var(--cream-50);
+  --surface: #ffffff;
+  --text: #1a2420;
+  --text-muted: #55625b;
+  --accent: var(--green-800);
+  --accent-text: var(--cream-100);
+  --border: #e3dccb;
+  --focus: #b9832b;
+
+  --radius: 14px;
+  --tabbar-h: 64px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1a15;
+    --surface: #17261e;
+    --text: #ece6d6;
+    --text-muted: #a9b3a8;
+    --accent: var(--cream-100);
+    --accent-text: var(--green-900);
+    --border: #26392f;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; }
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+h1, h2, h3 {
+  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}

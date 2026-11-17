@@ -1,0 +1,26 @@
+{
+  "name": "lectern",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Self-hosted app for finding and getting audiobooks and ebooks.",
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/web"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm run build -w @lectern/shared && npm run build -w @lectern/server && npm run build -w @lectern/web",
+    "typecheck": "npm run build -w @lectern/shared && npm run typecheck -w @lectern/server && npm run typecheck -w @lectern/web",
+    "test": "npm run build -w @lectern/shared && npm test -w @lectern/server",
+    "dev": "npm run build -w @lectern/shared && concurrently -n server,web -c green,yellow \"npm run dev -w @lectern/server\" \"npm run dev -w @lectern/web\"",
+    "start": "node packages/server/dist/index.js"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.7",
+    "typescript": "^5.9.3"
+  }
+}
