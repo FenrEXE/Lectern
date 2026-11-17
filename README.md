@@ -5,7 +5,8 @@ Lectern is a self-hosted web app for audiobooks and ebooks. Heavy vibe coding wi
 Search for a book on your phone, tap once, and it lands in Audiobookshelf with
 the right series, book number and cover.
 
-> **Status:** early. The app skeleton runs; smart search is next.
+> **Status:** early. Smart search works (typo-tolerant, with "did you mean");
+> downloading and importing are next.
 > See [docs/DESIGN.md](docs/DESIGN.md) for what's planned.
 
 ## Run it

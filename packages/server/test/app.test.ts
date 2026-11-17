@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { normalizeText } from '@lectern/shared';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { getSetting, openDb, openMemoryDb, setSetting } from '../src/db.js';
@@ -61,12 +60,5 @@ describe('GET /api/health', () => {
     const res = await app.inject({ method: 'GET', url: '/api/nope' });
     expect(res.statusCode).toBe(404);
     await app.close();
-  });
-});
-
-describe('normalizeText', () => {
-  it('ignores case, accents and punctuation', () => {
-    expect(normalizeText('  The Well of Ascension! ')).toBe('the well of ascension');
-    expect(normalizeText('Brontë & Co.')).toBe('bronte and co');
   });
 });

@@ -59,10 +59,23 @@ docker build -t lectern .
 ## How Lectern talks to other services
 
 ### MAM: be a polite client
+- All MAM traffic goes through `packages/server/src/mam/client.ts`. Nothing else
+  may call MAM.
+- **Never from the home IP.** The MAM session is locked to the VPN's network. In
+  production Lectern runs inside qBittorrent's network (`network_mode:
+  service:qbittorrent`) with `MAM_REQUIRE_INTERFACE=wg0`, so the client refuses
+  to send anything while the tunnel is down.
 - Never call MAM when a page loads. Use only user actions and spaced-out
-  background jobs.
-- A search fans out to **at most 3** MAM queries (author / series / title). It
-  goes through one rate-limited queue, and results are cached in SQLite.
+  background jobs. Search asks MAM only after the person picks a book.
+- A chosen book fans out to **at most 3** MAM queries (title + surname, then
+  series + surname, then author), stopping early on a strong match. Requests go
+  through one queue at least 2 seconds apart, and results are cached for 15
+  minutes.
+- The endpoint is `POST /tor/js/loadSearchJSONbasic.php` with a JSON `tor`
+  body. Main categories: 13 = audiobooks, 14 = ebooks. MAM sends authors and
+  series as JSON strings, and "no results" as an `error` message. Still to
+  confirm against MAM's own API docs: category 14, and `series` as a
+  `srchIn` field.
 - MAM may send back a refreshed `mam_id` cookie. **Always store the newest one**,
   so the session keeps renewing itself. If the session fails, show a clear
   "MAM session expired" message with a place to paste a new cookie.
@@ -87,15 +100,21 @@ docker build -t lectern .
   working and no space is wasted.
 
 ### Metadata
-- Fallback order: Audible data (via Audnexus) for audio, then Google Books, Open
-  Library, Hardcover, the MAM listing, and finally the file's embedded tags.
+- Search suggestions come from Audible's public catalogue (best for audio:
+  forgiving of typos, knows series) and Google Books (best for ebooks: ISBNs).
+  They're merged so each book appears once, and cached for 24 hours.
+- Fallback order when importing: Audible data (via Audnexus) for audio, then
+  Google Books, Open Library, Hardcover, the MAM listing, and finally the file's
+  embedded tags.
 - Score every match. When the sources disagree, put the book in a "needs a look"
   list rather than guessing.
 
 ## Roadmap (current position in bold)
 
-1. **Skeleton: server, web, shared types, config, database, Docker image**
-2. Smart search: the metadata lookup, then a MAM fan-out, merge and rank
+1. Skeleton: server, web, shared types, config, database, Docker image ✅
+2. **Smart search: the metadata lookup (Audible + Google Books), "did you mean",
+   then a MAM fan-out for the chosen book, merge and rank.** Built; still to
+   test against live MAM.
 3. Author and series pages (series in reading order)
 4. qBittorrent hand-off and hands-off Audiobookshelf import
 5. The new UI and cover caching (small WebP thumbnails)
