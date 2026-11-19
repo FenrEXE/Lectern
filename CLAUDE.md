@@ -128,10 +128,10 @@ docker build -t lectern .
 ## Roadmap (current position in bold)
 
 1. Skeleton: server, web, shared types, config, database, Docker image ✅
-2. **Smart search: the metadata lookup (Audible + Google Books), "did you mean",
-   then a MAM fan-out for the chosen book, merge and rank.** Built; still to
-   test against live MAM.
-3. Author and series pages (series in reading order)
+2. Smart search: the metadata lookup (Audible, Google Books, Open Library),
+   "did you mean", then a MAM fan-out for the chosen book, merge and rank ✅
+   (tested against live MAM through the VPN)
+3. **Author and series pages (series in reading order)**
 4. qBittorrent hand-off and hands-off Audiobookshelf import
 5. The new UI and cover caching (small WebP thumbnails)
 6. Profiles (separate libraries per person), the ebook side, a watch list, new releases
