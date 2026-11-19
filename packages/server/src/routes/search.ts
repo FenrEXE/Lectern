@@ -22,6 +22,7 @@ const availabilityBody = z.object({
     subtitle: z.string().max(500).optional(),
     authors: z.array(z.string().max(200)).max(10).default([]),
     series: z.array(series).max(5).optional(),
+    isbn: z.string().max(20).optional(),
   }),
 });
 

@@ -71,11 +71,21 @@ docker build -t lectern .
   series + surname, then author), stopping early on a strong match. Requests go
   through one queue at least 2 seconds apart, and results are cached for 15
   minutes.
-- The endpoint is `POST /tor/js/loadSearchJSONbasic.php` with a JSON `tor`
-  body. Main categories: 13 = audiobooks, 14 = ebooks. MAM sends authors and
-  series as JSON strings, and "no results" as an `error` message. Still to
-  confirm against MAM's own API docs: category 14, and `series` as a
-  `srchIn` field.
+- **MAM only allows automating what's on its API page.** Lectern uses exactly
+  two of those: *Torrent Search (JSON)* and *Download Torrent*. Anything else
+  (and anything that "impacts the site negatively") can cost the account.
+- Search: `POST /tor/js/loadSearchJSONbasic.php` with a JSON `tor` body
+  (confirmed against MAM's API docs). `main_cat`: 13 = AudioBooks,
+  14 = E-Books. `srchIn` accepts title, author, narrator, series (and others).
+  Answers come as strings: numbers ("40"), size in bytes ("6324306932"),
+  several file types in one string ("m4a mp3"), authors/series as JSON strings,
+  series numbers that can be packs ("01-16, 13.5"), and sometimes `name`
+  instead of `title`. "No results" arrives as an `error` message. `free` or
+  `personal_freeleech` means free to download; `fl_vip` alone doesn't.
+- Never send `dlLink`: it returns personal download keys Lectern doesn't need.
+- Download: `GET /tor/download.php?tid=<id>` with the session cookie.
+  **Never add `&fl`**: it spends a freeleech wedge, and there are no refunds.
+  Only ever do that if the person explicitly chooses it for that torrent.
 - MAM may send back a refreshed `mam_id` cookie. **Always store the newest one**,
   so the session keeps renewing itself. If the session fails, show a clear
   "MAM session expired" message with a place to paste a new cookie.

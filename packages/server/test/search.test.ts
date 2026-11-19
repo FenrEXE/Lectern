@@ -6,7 +6,7 @@ import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { openMemoryDb } from '../src/db.js';
 import { MamClient, readMamCookie } from '../src/mam/client.js';
-import { parseSearchResponse, parseSeries } from '../src/mam/parse.js';
+import { formatSize, parseSearchResponse, parseSeries, seriesRanges } from '../src/mam/parse.js';
 import { parseAudible } from '../src/metadata/audible.js';
 import { parseGoogleBooks } from '../src/metadata/googleBooks.js';
 import { buildQueries, checkAvailability, scoreTorrent } from '../src/search/availability.js';
@@ -166,20 +166,37 @@ describe('Open Library and Google limits', () => {
 
 describe('MAM parsing', () => {
   it('unpacks authors and series from JSON strings', () => {
-    const [t] = parseSearchResponse(mamFinalEmpire);
+    const [t, second, , pack] = parseSearchResponse(mamFinalEmpire);
     expect(t).toMatchObject({
       id: '1001',
       authors: ['Brandon Sanderson'],
       narrators: ['Michael Kramer'],
-      series: [{ name: 'Mistborn', number: '1' }],
-      format: 'm4b',
+      series: [{ name: 'Mistborn', number: '01' }],
+      formats: ['m4b'],
+      size: '622.9 MiB',
       seeders: 40,
-      freeleech: false,
+      language: 'ENG',
+      freeleech: false, // fl_vip alone isn't freeleech
+      snatched: false,
+      collection: false,
     });
+    expect(second).toMatchObject({ title: 'The Final Empire', formats: ['mp3', 'm4a'], freeleech: true, snatched: true });
+    expect(pack?.collection).toBe(true);
     expect(parseSeries('{"1":["Stormlight Archive","2.5"],"2":["Cosmere"]}')).toEqual([
       { name: 'Stormlight Archive', number: '2.5' },
       { name: 'Cosmere' },
     ]);
+  });
+
+  it('formats sizes and reads series ranges', () => {
+    expect(formatSize('6324306932')).toBe('5.9 GiB');
+    expect(formatSize('1.2 GiB')).toBe('1.2 GiB');
+    expect(seriesRanges('01-16, 13.5')).toEqual([
+      [1, 16],
+      [13.5, 13.5],
+    ]);
+    expect(seriesRanges('2')).toEqual([[2, 2]]);
+    expect(seriesRanges(undefined)).toEqual([]);
   });
 
   it('treats "nothing returned" as no results and session errors as expired', () => {
@@ -215,6 +232,9 @@ describe('MamClient', () => {
     expect(cookies).toEqual(['mam_id=cookie-1', 'mam_id=cookie-2']);
     const sent = JSON.parse(String(fetchFn.calls[0]?.init?.body));
     expect(sent.tor.main_cat).toEqual(['13']);
+    expect(sent.tor.srchIn).toContain('series');
+    // Never asks for personal download keys.
+    expect(fetchFn.calls[0]?.url).not.toContain('dlLink');
   });
 
   it('lets a newly pasted MAM_ID replace a stored cookie', async () => {
@@ -250,10 +270,18 @@ describe('availability', () => {
     expect(buildQueries({ title: 'Standalone (Unabridged)', authors: [] })).toEqual(['standalone']);
   });
 
-  it('scores the right book above the next one in the series', () => {
-    const [m4b, , well] = parseSearchResponse(mamFinalEmpire);
+  it('scores the right book above the next one in the series, and singles above packs', () => {
+    const [m4b, , well, pack] = parseSearchResponse(mamFinalEmpire);
     expect(scoreTorrent(finalEmpire, m4b!)).toBeGreaterThan(0.85);
     expect(scoreTorrent(finalEmpire, well!)).toBeLessThan(0.5);
+    expect(scoreTorrent(finalEmpire, pack!)).toBeLessThan(scoreTorrent(finalEmpire, m4b!));
+    // A pack that doesn't include book 5 is penalised like a wrong book.
+    expect(scoreTorrent({ ...finalEmpire, series: [{ name: 'Mistborn', number: '5' }] }, pack!)).toBeLessThan(0.5);
+  });
+
+  it('treats a matching ISBN as a perfect match', () => {
+    const t = { ...parseSearchResponse(mamFinalEmpire)[2]!, isbn: '9780765311788' };
+    expect(scoreTorrent({ ...finalEmpire, isbn: '978-0-7653-1178-8' }, t)).toBe(1);
   });
 
   it('stops after one search when it finds a strong match, and ranks m4b first', async () => {

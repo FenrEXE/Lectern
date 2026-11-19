@@ -36,7 +36,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({
         kind,
-        book: { title: book.title, subtitle: book.subtitle, authors: book.authors, series: book.series },
+        book: { title: book.title, subtitle: book.subtitle, authors: book.authors, series: book.series, isbn: book.isbn },
       }),
     }),
 };

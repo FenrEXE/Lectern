@@ -115,11 +115,15 @@ export class MamClient {
         main_cat: [MAIN_CATEGORY[kind]],
       },
       perpage: 50,
+      // Ask for ISBNs (often blank, but a perfect match when present).
+      isbn: 'true',
     };
 
     let res: Response;
     try {
-      res = await this.opts.fetch(`${SEARCH_URL}?dlLink=1`, {
+      // No dlLink: those are personal download keys, and Lectern downloads with
+      // the session cookie instead, so it never needs or stores them.
+      res = await this.opts.fetch(SEARCH_URL, {
         method: 'POST',
         headers: {
           Cookie: `mam_id=${cookie}`,

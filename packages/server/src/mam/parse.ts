@@ -60,24 +60,66 @@ export function parseSeries(v: unknown): SeriesPosition[] {
   return out;
 }
 
+/** 6324306932 → "5.9 GiB". MAM sends size as a number of bytes in a string. */
+export function formatSize(size: unknown): string | undefined {
+  const text = str(size);
+  if (!text) return undefined;
+  if (!/^\d+$/.test(text)) return text; // already human-readable
+  let value = Number(text);
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`;
+}
+
+/**
+ * Series numbers can be one book ("2", "13.5") or several ("01-16, 13.5").
+ * Returns the ranges covered, e.g. [[1, 16], [13.5, 13.5]]. Empty if unreadable.
+ */
+export function seriesRanges(number?: string): Array<[number, number]> {
+  if (!number) return [];
+  const ranges: Array<[number, number]> = [];
+  for (const part of number.split(/[,&]|\band\b/)) {
+    const m = /^\s*(\d+(?:\.\d+)?)\s*(?:[-–]\s*(\d+(?:\.\d+)?))?\s*$/.exec(part);
+    if (m) ranges.push([Number(m[1]), Number(m[2] ?? m[1])]);
+  }
+  return ranges;
+}
+
+/** True when a series number covers more than one book. */
+const isPack = (number?: string): boolean => {
+  const r = seriesRanges(number);
+  return r.length > 1 || r.some(([a, b]) => b > a);
+};
+
 export function parseTorrent(item: unknown): ParsedTorrent | undefined {
   if (!isObj(item)) return undefined;
   const id = str(item.id);
   const title = str(item.title) ?? str(item.name);
   if (!id || !title) return undefined;
+  const series = parseSeries(item.series_info);
+  const formats = [...new Set((str(item.filetype) ?? '').toLowerCase().split(/[\s,]+/).filter(Boolean))];
   return {
     id,
     title,
     authors: parseNames(item.author_info),
     narrators: parseNames(item.narrator_info),
-    series: parseSeries(item.series_info),
-    format: str(item.filetype)?.toLowerCase(),
-    size: str(item.size),
+    series,
+    formats,
+    size: formatSize(item.size),
     seeders: num(item.seeders),
     leechers: num(item.leechers),
     category: str(item.catname),
+    language: str(item.lang_code),
     added: str(item.added),
-    freeleech: flag(item.free) || flag(item.personal_freeleech) || flag(item.fl_vip),
+    isbn: str(item.isbn)?.replace(/[^\dX]/gi, '') || undefined,
+    freeleech: flag(item.free) || flag(item.personal_freeleech),
+    vip: flag(item.vip),
+    snatched: flag(item.my_snatched),
+    collection: series.some((s) => isPack(s.number)) || /\bbooks?\s*\d+\s*[-–]\s*\d+/i.test(title),
   };
 }
 

@@ -64,15 +64,24 @@ export interface MamTorrent {
   authors: string[];
   narrators: string[];
   series: SeriesPosition[];
-  /** Lower-case file type, e.g. "m4b", "mp3", "epub". */
-  format?: string;
-  /** As MAM writes it, e.g. "622.9 MiB". */
+  /** Lower-case file types in the torrent, e.g. ["m4b"] or ["m4a", "mp3"]. */
+  formats: string[];
+  /** Ready to show, e.g. "622.9 MiB". */
   size?: string;
   seeders: number;
   leechers: number;
   category?: string;
+  /** 3-letter language code, e.g. "ENG". */
+  language?: string;
   added?: string;
+  isbn?: string;
+  /** Free to download (sitewide freeleech, or bought as a personal freeleech). */
   freeleech: boolean;
+  vip: boolean;
+  /** You've downloaded this torrent before. */
+  snatched: boolean;
+  /** A pack of several books (e.g. series number "01-16"), not one book. */
+  collection: boolean;
   /** How well this torrent matches the chosen book, 0–1. */
   matchScore: number;
 }

@@ -29,7 +29,16 @@ async function check(): Promise<void> {
 }
 
 function torrentLine(t: MamTorrent): string {
-  return [t.format?.toUpperCase(), t.size, `${t.seeders} seeding`].filter(Boolean).join(' · ');
+  const formats = t.formats.map((f) => f.toUpperCase()).join('/');
+  return [formats, t.size, `${t.seeders} seeding`].filter(Boolean).join(' · ');
+}
+
+function badges(t: MamTorrent): string[] {
+  return [
+    t.freeleech && 'Freeleech',
+    t.collection && 'Series pack',
+    t.snatched && 'Downloaded before',
+  ].filter((b): b is string => !!b);
 }
 
 onMounted(() => {
@@ -87,7 +96,7 @@ function onBackdrop(e: MouseEvent): void {
               <span class="torrent__title">{{ best.title }}</span>
               <span class="torrent__meta">
                 {{ torrentLine(best) }}
-                <span v-if="best.freeleech" class="badge">Freeleech</span>
+                <span v-for="b in badges(best)" :key="b" class="badge">{{ b }}</span>
               </span>
             </div>
             <button type="button" class="primary" disabled>Add to Library</button>
@@ -98,7 +107,7 @@ function onBackdrop(e: MouseEvent): void {
                 <span class="torrent__title">{{ t.title }}</span>
                 <span class="torrent__meta">
                   {{ torrentLine(t) }}
-                  <span v-if="t.freeleech" class="badge">Freeleech</span>
+                  <span v-for="b in badges(t)" :key="b" class="badge">{{ b }}</span>
                 </span>
               </li>
             </ul>

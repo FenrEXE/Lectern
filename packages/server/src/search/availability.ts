@@ -16,7 +16,7 @@ import {
   type MediaKind,
 } from '@lectern/shared';
 import type { MamClient } from '../mam/client.js';
-import { MamError, type ParsedTorrent } from '../mam/parse.js';
+import { MamError, seriesRanges, type ParsedTorrent } from '../mam/parse.js';
 
 const MAX_QUERIES = 3;
 const STRONG_MATCH = 0.85;
@@ -45,6 +45,10 @@ export function buildQueries(book: Book): string[] {
 
 /** How well a torrent matches the chosen book, 0–1. */
 export function scoreTorrent(book: Book, t: ParsedTorrent): number {
+  // Same ISBN means same book, whatever the titles say.
+  const isbn = book.isbn?.replace(/[^\dX]/gi, '');
+  if (isbn && t.isbn && isbn === t.isbn) return 1;
+
   const fullTitle = [book.title, book.subtitle].filter(Boolean).join(' ');
   const title = Math.max(titleSimilarity(book.title, t.title), titleSimilarity(fullTitle, t.title));
 
@@ -55,14 +59,19 @@ export function scoreTorrent(book: Book, t: ParsedTorrent): number {
   let score = 0.6 * title + 0.3 * author;
 
   // Series: the right number is a bonus; the same series but a different
-  // number means a different book, which is a big penalty.
+  // number means a different book, which is a big penalty. A pack that
+  // includes the book is a fallback, ranked below single books.
   const wanted = book.series?.[0];
   const theirs = wanted && t.series.find((s) => titleSimilarity(s.name, wanted.name) >= 0.7);
-  if (wanted && theirs) {
-    if (wanted.number && theirs.number && Number(wanted.number) !== Number(theirs.number)) score *= 0.5;
+  const wantedNumber = wanted?.number !== undefined ? Number(wanted.number) : NaN;
+  const ranges = seriesRanges(theirs ? theirs.number : undefined);
+  if (theirs && !Number.isNaN(wantedNumber) && ranges.length > 0) {
+    const covers = ranges.some(([from, to]) => wantedNumber >= from && wantedNumber <= to);
+    if (!covers) score *= 0.5;
+    else if (t.collection) score *= 0.85;
     else score += 0.1;
   } else {
-    score += 0.05;
+    score += t.collection ? 0 : 0.05;
   }
   return Math.round(Math.min(1, score) * 100) / 100;
 }
@@ -73,9 +82,10 @@ const FORMAT_ORDER: Record<MediaKind, string[]> = {
   ebook: ['epub', 'azw3', 'mobi', 'pdf'],
 };
 
-function formatRank(kind: MediaKind, format?: string): number {
-  const i = format ? FORMAT_ORDER[kind].indexOf(format) : -1;
-  return i === -1 ? 99 : i;
+/** The rank of the best format in the torrent (lower is better). */
+function formatRank(kind: MediaKind, formats: string[]): number {
+  const ranks = formats.map((f) => FORMAT_ORDER[kind].indexOf(f)).filter((i) => i !== -1);
+  return ranks.length ? Math.min(...ranks) : 99;
 }
 
 /** Best first: match (in 0.05 steps, so near-ties fall through), then format, then seeders. */
@@ -84,7 +94,7 @@ export function rankTorrents(kind: MediaKind, torrents: MamTorrent[]): MamTorren
   return [...torrents].sort(
     (a, b) =>
       bucket(b.matchScore) - bucket(a.matchScore) ||
-      formatRank(kind, a.format) - formatRank(kind, b.format) ||
+      formatRank(kind, a.formats) - formatRank(kind, b.formats) ||
       b.seeders - a.seeders,
   );
 }
