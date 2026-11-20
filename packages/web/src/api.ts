@@ -3,6 +3,8 @@ import type {
   AvailabilityResponse,
   Book,
   HealthResponse,
+  LibraryRequest,
+  MamTorrent,
   MediaKind,
   SuggestResponse,
 } from '@lectern/shared';
@@ -39,4 +41,31 @@ export const api = {
         book: { title: book.title, subtitle: book.subtitle, authors: book.authors, series: book.series, isbn: book.isbn },
       }),
     }),
+
+  requests: () => request<LibraryRequest[]>('/api/requests'),
+
+  /** "Add to Library": the chosen book and the torrent picked for it. */
+  addToLibrary: (book: Book, kind: MediaKind, torrent: MamTorrent) =>
+    request<LibraryRequest>('/api/requests', {
+      method: 'POST',
+      body: JSON.stringify({
+        kind,
+        torrent: { id: torrent.id, title: torrent.title },
+        book: {
+          title: book.title,
+          subtitle: book.subtitle,
+          authors: book.authors,
+          narrators: book.narrators,
+          series: book.series,
+          description: book.description,
+          asin: book.asin,
+          isbn: book.isbn,
+          publishedYear: book.publishedYear,
+          durationMinutes: book.durationMinutes,
+          coverUrl: book.coverUrl,
+        },
+      }),
+    }),
+
+  retry: (id: number) => request<LibraryRequest>(`/api/requests/${id}/retry`, { method: 'POST' }),
 };

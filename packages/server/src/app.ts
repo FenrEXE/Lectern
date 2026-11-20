@@ -9,8 +9,12 @@ import { HOUR, pruneCache } from './cache.js';
 import type { Config } from './config.js';
 import type { Db } from './db.js';
 import type { FetchFn } from './http.js';
+import { AbsClient } from './audiobookshelf/client.js';
 import { MamClient, type MamClientOptions } from './mam/client.js';
+import { QbClient } from './qbittorrent/client.js';
+import { RequestService } from './requests/service.js';
 import { healthRoutes } from './routes/health.js';
+import { requestRoutes } from './routes/requests.js';
 import { searchRoutes } from './routes/search.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -29,6 +33,8 @@ export interface AppOptions {
   fetch?: FetchFn;
   /** Extra MAM client options, for tests (fake clock, interfaces...). */
   mam?: Partial<MamClientOptions>;
+  /** Watch downloads in the background (off in tests). Default true. */
+  watchDownloads?: boolean;
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
@@ -45,8 +51,16 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     ...opts.mam,
   });
 
-  healthRoutes(app, opts.config, mam, opts.version);
+  const qb = new QbClient(opts.config.qbittorrent, fetchFn);
+  const abs = new AbsClient(opts.config.audiobookshelf, fetchFn);
+  const requests = new RequestService({ db: opts.db, config: opts.config, fetch: fetchFn, mam, qb, abs, log: app.log });
+
+  healthRoutes(app, opts.config, mam, requests, opts.version);
   searchRoutes(app, { db: opts.db, config: opts.config, fetch: fetchFn, mam });
+  requestRoutes(app, requests);
+
+  if (opts.watchDownloads !== false) requests.start();
+  app.addHook('onClose', async () => requests.stop());
 
   // Clear out expired cache entries hourly.
   const pruner = setInterval(() => pruneCache(opts.db), HOUR);

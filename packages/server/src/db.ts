@@ -24,6 +24,25 @@ const migrations: string[] = [
   );
   CREATE INDEX cache_expires_at ON cache (expires_at);
   `,
+  // 2: "Add to Library" requests
+  `
+  CREATE TABLE requests (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind          TEXT NOT NULL,
+    status        TEXT NOT NULL,
+    book_json     TEXT NOT NULL,
+    torrent_id    TEXT NOT NULL,
+    torrent_title TEXT NOT NULL,
+    info_hash     TEXT,
+    progress      REAL NOT NULL DEFAULT 0,
+    eta_seconds   INTEGER,
+    message       TEXT,
+    library_path  TEXT,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+  );
+  CREATE INDEX requests_status ON requests (status);
+  `,
 ];
 
 /** Open (or create) the database and bring its schema up to date. */

@@ -106,6 +106,29 @@ export interface AvailabilityResponse {
   others: MamTorrent[];
 }
 
+/** Where an "Add to Library" request is up to. */
+export type RequestStatus = 'sending' | 'downloading' | 'importing' | 'done' | 'failed';
+
+/** One "Add to Library": a chosen book and the MAM torrent picked for it. */
+export interface LibraryRequest {
+  id: number;
+  kind: MediaKind;
+  status: RequestStatus;
+  book: Book;
+  torrentId: string;
+  torrentTitle: string;
+  /** Download progress, 0–1. */
+  progress: number;
+  /** Seconds left, when qBittorrent knows. */
+  etaSeconds?: number;
+  /** What went wrong, or a note like "Already in your library". */
+  message?: string;
+  /** Where the book was filed, relative to the library folder. */
+  libraryPath?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Whether Lectern has the settings it needs for each outside service. */
 export type ServiceState = 'configured' | 'not-configured';
 
@@ -119,4 +142,6 @@ export interface HealthResponse {
     qbittorrent: ServiceState;
     audiobookshelf: ServiceState;
   };
+  /** Whether "Add to Library" is set up for each kind of book. */
+  canAdd: Record<MediaKind, boolean>;
 }

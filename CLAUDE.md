@@ -99,6 +99,17 @@ docker build -t lectern .
 - Give separate errors for "wrong password", "can't reach qBittorrent" and
   "qBittorrent is up but the VPN isn't".
 
+### Add to Library (packages/server/src/requests/service.ts)
+- A request goes sending → downloading → importing → done (or failed, with a
+  message and a retry). It's all in the `requests` table, so restarts resume.
+- The .torrent's info hash (computed by Lectern, `torrent/torrentFile.ts`) is
+  how Lectern follows it in qBittorrent. Adding is confirmed by looking the
+  torrent up, never by qBittorrent's reply text.
+- A watcher checks qBittorrent every 10 seconds. It only talks to qBittorrent,
+  never MAM.
+- Importing never overwrites: if the book's folder already has files, it's
+  marked done with "Already in your library".
+
 ### Audiobookshelf: no guessing
 - Lectern already knows the exact book from its search step. On import it:
   - files the book as `Author/Series/Book N - Title/`;
@@ -131,8 +142,9 @@ docker build -t lectern .
 2. Smart search: the metadata lookup (Audible, Google Books, Open Library),
    "did you mean", then a MAM fan-out for the chosen book, merge and rank ✅
    (tested against live MAM through the VPN)
-3. **Author and series pages (series in reading order)**
-4. qBittorrent hand-off and hands-off Audiobookshelf import
+3. Author and series pages (series in reading order)
+4. **qBittorrent hand-off and hands-off Audiobookshelf import.** Built (done
+   before step 3 by choice); still to test with a real download.
 5. The new UI and cover caching (small WebP thumbnails)
 6. Profiles (separate libraries per person), the ebook side, a watch list, new releases
 7. Tidy up: an admin-only tool that fixes existing Audiobookshelf libraries (dry run + undo)

@@ -16,6 +16,7 @@ import { USER_AGENT, type FetchFn } from '../http.js';
 import { MamError, parseSearchResponse, type ParsedTorrent } from './parse.js';
 
 const SEARCH_URL = 'https://www.myanonamouse.net/tor/js/loadSearchJSONbasic.php';
+const DOWNLOAD_URL = 'https://www.myanonamouse.net/tor/download.php';
 const MIN_GAP_MS = 2_000;
 const CACHE_TTL = 15 * MINUTE;
 const TIMEOUT_MS = 20_000;
@@ -95,15 +96,40 @@ export class MamClient {
     return result;
   }
 
-  private async request(text: string, kind: MediaKind): Promise<ParsedTorrent[]> {
+  /** The cookie to send, after checking MAM is set up and the VPN is up. */
+  private ready(): string {
     const cookie = this.cookie();
     if (!cookie) throw new MamError('not-configured', 'MAM isn’t set up yet. Add your mam_id in Lectern’s settings.');
-
     const iface = this.opts.config.mam.requireInterface;
     if (iface && !this.interfaceNames().includes(iface)) {
       throw new MamError('vpn-down', `The VPN (${iface}) isn’t up, so Lectern won’t contact MAM.`);
     }
+    return cookie;
+  }
 
+  /** Save MAM's refreshed cookie. Only call this after a good answer. */
+  private keepFreshCookie(res: Response, sent: string): void {
+    const fresh = readMamCookie(res.headers);
+    if (fresh && fresh !== sent) {
+      this.saveCookie(fresh);
+      this.opts.log?.info({}, 'Saved refreshed MAM session cookie');
+    }
+  }
+
+  private async send(url: string, cookie: string, init: RequestInit = {}): Promise<Response> {
+    try {
+      return await this.opts.fetch(url, {
+        ...init,
+        headers: { Cookie: `mam_id=${cookie}`, 'User-Agent': USER_AGENT, ...(init.headers ?? {}) },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+    } catch (err) {
+      throw new MamError('error', `Couldn’t reach MAM: ${(err as Error).message}`);
+    }
+  }
+
+  private async request(text: string, kind: MediaKind): Promise<ParsedTorrent[]> {
+    const cookie = this.ready();
     const body = {
       tor: {
         text,
@@ -119,24 +145,13 @@ export class MamClient {
       isbn: 'true',
     };
 
-    let res: Response;
-    try {
-      // No dlLink: those are personal download keys, and Lectern downloads with
-      // the session cookie instead, so it never needs or stores them.
-      res = await this.opts.fetch(SEARCH_URL, {
-        method: 'POST',
-        headers: {
-          Cookie: `mam_id=${cookie}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'User-Agent': USER_AGENT,
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
-    } catch (err) {
-      throw new MamError('error', `Couldn’t reach MAM: ${(err as Error).message}`);
-    }
+    // No dlLink: those are personal download keys, and Lectern downloads with
+    // the session cookie instead, so it never needs or stores them.
+    const res = await this.send(SEARCH_URL, cookie, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    });
 
     if (res.status === 401 || res.status === 403) {
       throw new MamError('session-expired', 'MAM rejected the session. Paste a fresh mam_id.');
@@ -157,13 +172,36 @@ export class MamClient {
 
     // Throws on session errors, so a cookie is only saved after a good answer.
     const torrents = parseSearchResponse(json);
-
-    const fresh = readMamCookie(res.headers);
-    if (fresh && fresh !== cookie) {
-      this.saveCookie(fresh);
-      this.opts.log?.info({}, 'Saved refreshed MAM session cookie');
-    }
+    this.keepFreshCookie(res, cookie);
     return torrents;
+  }
+
+  /**
+   * Fetch one .torrent file. Uses the session cookie, never a freeleech wedge:
+   * adding "&fl" would spend one, with no refunds, so Lectern never does.
+   * Not cached: each call is a real download the person asked for.
+   */
+  async downloadTorrent(torrentId: string): Promise<Buffer> {
+    if (!/^\d+$/.test(torrentId)) throw new MamError('error', 'That isn’t a MAM torrent ID.');
+    return this.enqueue(async () => {
+      const cookie = this.ready();
+      const res = await this.send(`${DOWNLOAD_URL}?tid=${torrentId}`, cookie);
+      if (res.status === 401 || res.status === 403) {
+        throw new MamError('session-expired', 'MAM rejected the session. Paste a fresh mam_id.');
+      }
+      if (!res.ok) throw new MamError('error', `MAM answered ${res.status} to the download.`);
+      const data = Buffer.from(await res.arrayBuffer());
+      // A real .torrent starts with "d". Anything else is an error or login page.
+      if (data[0] !== 0x64) {
+        const text = data.subarray(0, 2000).toString('utf8');
+        if (/log ?in/i.test(text)) {
+          throw new MamError('session-expired', 'MAM asked to log in. Paste a fresh mam_id.');
+        }
+        throw new MamError('error', 'MAM didn’t send a torrent file.');
+      }
+      this.keepFreshCookie(res, cookie);
+      return data;
+    });
   }
 }
 

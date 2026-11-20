@@ -34,7 +34,7 @@ describe('database', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lectern-db-'));
     openDb(dir).close();
     const db = openDb(dir);
-    expect(db.pragma('user_version', { simple: true })).toBe(1);
+    expect(db.pragma('user_version', { simple: true })).toBe(2);
     db.close();
   });
 });
@@ -42,21 +42,22 @@ describe('database', () => {
 describe('GET /api/health', () => {
   it('reports which services are configured, without secrets', async () => {
     const config = loadConfig({ MAM_ID: 'secret-cookie', QB_URL: 'http://qb:8080' });
-    const app = await buildApp({ config, db: openMemoryDb(), version: '9.9.9', webDir: noWeb, logger: false });
+    const app = await buildApp({ config, db: openMemoryDb(), version: '9.9.9', webDir: noWeb, logger: false, watchDownloads: false });
     const res = await app.inject({ method: 'GET', url: '/api/health' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       status: 'ok',
       name: 'Lectern',
       version: '9.9.9',
-      services: { mam: 'configured', qbittorrent: 'not-configured', audiobookshelf: 'not-configured' },
+      services: { mam: 'configured', qbittorrent: 'configured', audiobookshelf: 'not-configured' },
+      canAdd: { audiobook: false, ebook: false }, // no library folders set
     });
     expect(res.body).not.toContain('secret-cookie');
     await app.close();
   });
 
   it('returns JSON 404 for unknown API paths', async () => {
-    const app = await buildApp({ config: loadConfig({}), db: openMemoryDb(), version: '0', webDir: noWeb, logger: false });
+    const app = await buildApp({ config: loadConfig({}), db: openMemoryDb(), version: '0', webDir: noWeb, logger: false, watchDownloads: false });
     const res = await app.inject({ method: 'GET', url: '/api/nope' });
     expect(res.statusCode).toBe(404);
     await app.close();

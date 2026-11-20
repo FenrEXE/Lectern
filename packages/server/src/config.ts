@@ -25,8 +25,16 @@ const schema = z.object({
   QB_URL: optionalUrl,
   QB_USER: optional,
   QB_PASS: optional,
+  QB_CATEGORY: z.string().trim().default('lectern'),
+  QB_SAVE_PATH: optional,
+  QB_PATH_FROM: optional,
+  QB_PATH_TO: optional,
+  LIBRARY_AUDIOBOOKS_DIR: optional,
+  LIBRARY_EBOOKS_DIR: optional,
   ABS_URL: optionalUrl,
   ABS_API_KEY: optional,
+  ABS_AUDIOBOOKS_LIBRARY_ID: optional,
+  ABS_EBOOKS_LIBRARY_ID: optional,
   AUDIBLE_REGION: z
     .string()
     .trim()
@@ -47,8 +55,24 @@ export interface Config {
     /** A network interface (e.g. "wg0") that must exist before Lectern talks to MAM. */
     requireInterface?: string;
   };
-  qbittorrent: { url?: string; username?: string; password?: string };
-  audiobookshelf: { url?: string; apiKey?: string };
+  qbittorrent: {
+    url?: string;
+    username?: string;
+    password?: string;
+    /** Category Lectern's downloads go in. */
+    category: string;
+    /** Where qBittorrent should save them (as qBittorrent sees it). */
+    savePath?: string;
+    /**
+     * When qBittorrent and Lectern see the same files under different paths,
+     * replace `pathFrom` (qBittorrent's view) with `pathTo` (Lectern's).
+     */
+    pathFrom?: string;
+    pathTo?: string;
+  };
+  /** The folders books are filed into, per kind. Unset = "Add" is off for that kind. */
+  libraries: { audiobook?: string; ebook?: string };
+  audiobookshelf: { url?: string; apiKey?: string; libraryIds: { audiobook?: string; ebook?: string } };
   audibleRegion: string;
   googleBooksApiKey?: string;
 }
@@ -72,8 +96,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dataDir: path.resolve(e.DATA_DIR),
     logLevel: e.LOG_LEVEL,
     mam: { cookie: mamCookie || undefined, requireInterface: e.MAM_REQUIRE_INTERFACE },
-    qbittorrent: { url: trimSlash(e.QB_URL), username: e.QB_USER, password: e.QB_PASS },
-    audiobookshelf: { url: trimSlash(e.ABS_URL), apiKey: e.ABS_API_KEY },
+    qbittorrent: {
+      url: trimSlash(e.QB_URL),
+      username: e.QB_USER,
+      password: e.QB_PASS,
+      category: e.QB_CATEGORY || 'lectern',
+      savePath: e.QB_SAVE_PATH,
+      pathFrom: e.QB_PATH_FROM,
+      pathTo: e.QB_PATH_TO,
+    },
+    libraries: { audiobook: e.LIBRARY_AUDIOBOOKS_DIR, ebook: e.LIBRARY_EBOOKS_DIR },
+    audiobookshelf: {
+      url: trimSlash(e.ABS_URL),
+      apiKey: e.ABS_API_KEY,
+      libraryIds: { audiobook: e.ABS_AUDIOBOOKS_LIBRARY_ID, ebook: e.ABS_EBOOKS_LIBRARY_ID },
+    },
     audibleRegion: e.AUDIBLE_REGION,
     googleBooksApiKey: e.GOOGLE_BOOKS_API_KEY,
   };

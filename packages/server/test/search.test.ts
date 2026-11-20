@@ -321,6 +321,7 @@ describe('search routes', () => {
       version: '0',
       webDir: noWeb,
       logger: false,
+      watchDownloads: false,
       fetch: metadataFetch(),
     });
     expect((await app.inject({ url: '/api/suggest?q=a' })).statusCode).toBe(400);
@@ -332,7 +333,7 @@ describe('search routes', () => {
   });
 
   it('POST /api/availability answers without MAM set up', async () => {
-    const app = await buildApp({ config: loadConfig({}), db: openMemoryDb(), version: '0', webDir: noWeb, logger: false });
+    const app = await buildApp({ config: loadConfig({}), db: openMemoryDb(), version: '0', webDir: noWeb, logger: false, watchDownloads: false });
     const res = await app.inject({
       method: 'POST',
       url: '/api/availability',

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import type { AvailabilityResponse, BookSuggestion, MamTorrent, MediaKind } from '@lectern/shared';
+import { RouterLink } from 'vue-router';
+import type { AvailabilityResponse, BookSuggestion, LibraryRequest, MamTorrent, MediaKind } from '@lectern/shared';
 import { api } from '../api';
 import { duration, joinNames, seriesLabel } from '../format';
 import BookCover from './BookCover.vue';
@@ -17,6 +18,24 @@ const showAllText = ref(false);
 const showOthers = ref(false);
 
 const best = computed(() => availability.value?.matches[0]);
+
+// "Add to Library": which torrent was added (or is being added), and any problem.
+const canAdd = ref(true);
+const adding = ref<string>();
+const added = ref<LibraryRequest>();
+const addError = ref<string>();
+
+async function add(t: MamTorrent): Promise<void> {
+  adding.value = t.id;
+  addError.value = undefined;
+  try {
+    added.value = await api.addToLibrary(props.book, props.kind, t);
+  } catch (err) {
+    addError.value = (err as Error).message;
+  } finally {
+    adding.value = undefined;
+  }
+}
 
 async function check(): Promise<void> {
   availability.value = undefined;
@@ -44,8 +63,19 @@ function badges(t: MamTorrent): string[] {
 onMounted(() => {
   dialog.value?.showModal();
   void check();
+  api.health().then(
+    (h) => (canAdd.value = h.canAdd[props.kind]),
+    () => undefined,
+  );
 });
-watch(() => props.book.id, () => void check());
+watch(
+  () => props.book.id,
+  () => {
+    added.value = undefined;
+    addError.value = undefined;
+    void check();
+  },
+);
 
 // Clicking the dimmed area around the sheet closes it.
 function onBackdrop(e: MouseEvent): void {
@@ -99,16 +129,43 @@ function onBackdrop(e: MouseEvent): void {
                 <span v-for="b in badges(best)" :key="b" class="badge">{{ b }}</span>
               </span>
             </div>
-            <button type="button" class="primary" disabled>Add to Library</button>
-            <p class="muted small center">Downloading is the next thing to build.</p>
+            <div v-if="added" class="added" role="status">
+              <strong>Added.</strong> {{ added.torrentTitle }} is on its way.
+              <RouterLink to="/downloads" @click="dialog?.close()">See Downloads</RouterLink>
+            </div>
+            <button
+              v-else
+              type="button"
+              class="primary"
+              :disabled="!canAdd || !!adding"
+              @click="add(best)"
+            >
+              {{ adding === best.id ? 'Adding…' : 'Add to Library' }}
+            </button>
+            <p v-if="!canAdd && !added" class="muted small center">
+              Adding isn’t set up yet for {{ kind === 'ebook' ? 'ebooks' : 'audiobooks' }}.
+            </p>
+            <p v-if="addError" class="notice">{{ addError }}</p>
 
             <ul v-if="availability.matches.length > 1" class="torrents">
-              <li v-for="t in availability.matches.slice(1)" :key="t.id" class="torrent">
-                <span class="torrent__title">{{ t.title }}</span>
-                <span class="torrent__meta">
-                  {{ torrentLine(t) }}
-                  <span v-for="b in badges(t)" :key="b" class="badge">{{ b }}</span>
+              <li v-for="t in availability.matches.slice(1)" :key="t.id" class="torrent torrent--row">
+                <span class="torrent__text">
+                  <span class="torrent__title">{{ t.title }}</span>
+                  <span class="torrent__meta">
+                    {{ torrentLine(t) }}
+                    <span v-for="b in badges(t)" :key="b" class="badge">{{ b }}</span>
+                  </span>
                 </span>
+                <button
+                  v-if="canAdd && !added"
+                  type="button"
+                  class="get"
+                  :disabled="!!adding"
+                  :aria-label="`Add this version: ${t.title}, ${torrentLine(t)}`"
+                  @click="add(t)"
+                >
+                  {{ adding === t.id ? '…' : 'Get' }}
+                </button>
               </li>
             </ul>
           </template>
@@ -237,6 +294,52 @@ h3 {
 }
 
 .torrent--best { border-color: var(--green-500); }
+
+.torrent--row {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.torrent__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.get {
+  min-width: 56px;
+  min-height: 44px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.get:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.added {
+  margin-top: 12px;
+  padding: 14px 16px;
+  font-size: 15px;
+  color: var(--accent-text);
+  background: var(--accent);
+  border-radius: var(--radius);
+}
+
+.added a {
+  display: inline-block;
+  margin-left: 4px;
+  font-weight: 600;
+  color: inherit;
+}
 
 .torrent__title { font-weight: 600; font-size: 15px; }
 .torrent__meta { font-size: 13px; color: var(--text-muted); }
