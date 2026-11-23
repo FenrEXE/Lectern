@@ -51,7 +51,26 @@ There are four tabs along the bottom:
 - **Library:** what you own, grouped by series.
 - **Downloads:** progress, plus the "needs a look" list.
 
-Settings holds the admin-only **Tidy up** tool.
+A small top bar shows the Lectern name and your profile picture, which opens
+**Settings**:
+- **You:** your default (audiobooks or ebooks) and your password.
+- **Connections** (admins): MAM, qBittorrent, Audiobookshelf and book
+  information, each with a test button. Values from the environment show as
+  defaults; saved values can be reset.
+- **Profiles** (admins): add, edit and remove profiles; pick each one's library
+  folders (with a folder browser) and Audiobookshelf libraries.
+- Later, the admin-only **Tidy up** tool.
+
+### Profiles and sign-in
+- First run asks for the admin's name and password, plus a one-time setup code
+  from Lectern's log, so a stranger who finds a fresh install can't claim it.
+- The sign-in page shows "Who's reading?" with a tile per profile, then a
+  password. Admins can hide the names (people then type their name).
+- Each profile has its own audiobook and ebook folder and Audiobookshelf
+  library. "Add to Library" files the book into the library of whoever tapped it.
+- Downloads shows your own books; admins can switch to everyone's.
+- Sessions last 30 days and renew while in use. Changing a password signs out
+  your other devices.
 
 ### Book page
 - A big cover, with the page background tinted from the cover's colours.
@@ -67,8 +86,11 @@ Settings holds the admin-only **Tidy up** tool.
 
 ### Author and series pages
 - Author pages are grouped by series in reading order, with standalones last.
-  They can also be sorted by newest, most popular or A–Z.
+  They can also be sorted by newest or A–Z.
 - Series order comes from the metadata sources, not from MAM's result order.
+- One book per series number: dramatized or alternate editions are skipped
+  when a normal one exists.
+- These pages never ask MAM. MAM is only checked when you open a book.
 
 ## Discovery without hammering MAM
 - Followed authors and new releases are checked in the background once or twice
@@ -81,8 +103,9 @@ Settings holds the admin-only **Tidy up** tool.
 - **Watch** a missing book, and Lectern tells you when it turns up.
 
 ## Covers that load fast
-- Each cover is fetched once at a small size, resized to about 300 px wide,
-  saved as WebP and served by Lectern.
+- Each cover is fetched once, resized (120, 300 or 600 px wide), saved as WebP
+  in the data folder and served by Lectern. Only known cover hosts (Audible,
+  Google Books, Open Library) are fetched.
 - The page shows a colour placeholder straight away, then fades in the cover.
 - Covers load lazily as you scroll, with long-lived browser caching.
 

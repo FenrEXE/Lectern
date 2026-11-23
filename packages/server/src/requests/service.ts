@@ -8,9 +8,10 @@
 //
 // Everything is saved in the database, so a restart picks up where it left off.
 import path from 'node:path';
-import type { Book, LibraryRequest, MediaKind, RequestStatus } from '@lectern/shared';
+import type { Book, LibraryRequest, MediaKind, Profile, ProfileLibrary, RequestStatus } from '@lectern/shared';
 import type { AbsClient } from '../audiobookshelf/client.js';
-import type { Config } from '../config.js';
+import type { UserStore } from '../auth/users.js';
+import { readConfig, type ConfigSource } from '../config.js';
 import type { Db } from '../db.js';
 import type { FetchFn } from '../http.js';
 import { chooseFiles, importBook } from '../library/importer.js';
@@ -33,6 +34,8 @@ interface Row {
   eta_seconds: number | null;
   message: string | null;
   library_path: string | null;
+  user_id: number | null;
+  user_name?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -48,6 +51,8 @@ const toRequest = (r: Row): LibraryRequest => ({
   etaSeconds: r.eta_seconds ?? undefined,
   message: r.message ?? undefined,
   libraryPath: r.library_path ?? undefined,
+  userId: r.user_id ?? undefined,
+  userName: r.user_name ?? undefined,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -64,7 +69,9 @@ export class RequestError extends Error {
 
 export interface RequestServiceOptions {
   db: Db;
-  config: Config;
+  config: ConfigSource;
+  /** To find each profile's own library. */
+  users?: UserStore;
   fetch: FetchFn;
   mam: MamClient;
   qb: QbClient;
@@ -83,42 +90,75 @@ export class RequestService {
     this.sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
-  /** Whether "Add to Library" is set up for this kind of book. */
-  canAdd(kind: MediaKind): boolean {
-    return this.o.mam.isConfigured() && this.o.qb.isConfigured() && !!this.o.config.libraries[kind];
+  private get config() {
+    return readConfig(this.o.config);
   }
 
-  list(limit = 50): LibraryRequest[] {
-    const rows = this.o.db.prepare('SELECT * FROM requests ORDER BY id DESC LIMIT ?').all(limit) as Row[];
+  /**
+   * Where a profile's books of this kind go. Each profile has its own folder;
+   * requests from before profiles existed use the folders set in the environment.
+   */
+  libraryFor(userId: number | null | undefined, kind: MediaKind): ProfileLibrary {
+    if (userId != null && this.o.users) {
+      return this.o.users.get(userId)?.libraries[kind] ?? {};
+    }
+    return { dir: this.config.libraries[kind], absLibraryId: this.config.audiobookshelf.libraryIds[kind] };
+  }
+
+  /** Whether "Add to Library" is set up for this kind of book (for this profile). */
+  canAdd(kind: MediaKind, user?: Profile | null): boolean {
+    return this.o.mam.isConfigured() && this.o.qb.isConfigured() && !!this.libraryFor(user?.id, kind).dir;
+  }
+
+  /** The newest requests: one profile's, or everyone's (for an admin). */
+  list(userId?: number, limit = 50): LibraryRequest[] {
+    const select = `SELECT requests.*, users.name AS user_name FROM requests LEFT JOIN users ON users.id = requests.user_id`;
+    const rows = (
+      userId === undefined
+        ? this.o.db.prepare(`${select} ORDER BY requests.id DESC LIMIT ?`).all(limit)
+        : this.o.db.prepare(`${select} WHERE requests.user_id = ? ORDER BY requests.id DESC LIMIT ?`).all(userId, limit)
+    ) as Row[];
     return rows.map(toRequest);
   }
 
   get(id: number): LibraryRequest | undefined {
-    const row = this.o.db.prepare('SELECT * FROM requests WHERE id = ?').get(id) as Row | undefined;
+    const row = this.o.db
+      .prepare('SELECT requests.*, users.name AS user_name FROM requests LEFT JOIN users ON users.id = requests.user_id WHERE requests.id = ?')
+      .get(id) as Row | undefined;
     return row && toRequest(row);
   }
 
   /** Start an "Add to Library". Returns straight away; the work continues in the background. */
-  async create(input: { kind: MediaKind; book: Book; torrentId: string; torrentTitle: string }): Promise<LibraryRequest> {
-    if (!this.o.config.libraries[input.kind]) {
-      throw new RequestError(`No ${input.kind === 'ebook' ? 'ebook' : 'audiobook'} library folder is set up yet.`);
+  async create(input: {
+    kind: MediaKind;
+    book: Book;
+    torrentId: string;
+    torrentTitle: string;
+    userId?: number;
+  }): Promise<LibraryRequest> {
+    if (!this.libraryFor(input.userId, input.kind).dir) {
+      throw new RequestError(
+        `Your profile doesn’t have ${input.kind === 'ebook' ? 'an ebook' : 'an audiobook'} library folder yet. An admin can set one in Settings.`,
+      );
     }
     if (!this.o.qb.isConfigured()) throw new RequestError('qBittorrent isn’t set up yet.');
     if (!this.o.mam.isConfigured()) throw new RequestError('MAM isn’t set up yet.');
 
-    // The same torrent already requested (and not failed) → show that one instead.
+    // The same torrent already requested by this profile (and not failed) → show that one.
     const existing = this.o.db
-      .prepare("SELECT * FROM requests WHERE torrent_id = ? AND status != 'failed' ORDER BY id DESC LIMIT 1")
-      .get(input.torrentId) as Row | undefined;
-    if (existing) return toRequest(existing);
+      .prepare(
+        "SELECT * FROM requests WHERE torrent_id = ? AND user_id IS ? AND status != 'failed' ORDER BY id DESC LIMIT 1",
+      )
+      .get(input.torrentId, input.userId ?? null) as Row | undefined;
+    if (existing) return this.get(existing.id)!;
 
     const now = new Date().toISOString();
     const { lastInsertRowid } = this.o.db
       .prepare(
-        `INSERT INTO requests (kind, status, book_json, torrent_id, torrent_title, created_at, updated_at)
-         VALUES (?, 'sending', ?, ?, ?, ?, ?)`,
+        `INSERT INTO requests (kind, status, book_json, torrent_id, torrent_title, user_id, created_at, updated_at)
+         VALUES (?, 'sending', ?, ?, ?, ?, ?, ?)`,
       )
-      .run(input.kind, JSON.stringify(input.book), input.torrentId, input.torrentTitle, now, now);
+      .run(input.kind, JSON.stringify(input.book), input.torrentId, input.torrentTitle, input.userId ?? null, now, now);
     const id = Number(lastInsertRowid);
     void this.send(id);
     return this.get(id)!;
@@ -167,7 +207,7 @@ export class RequestService {
     try {
       const file = await this.o.mam.downloadTorrent(req.torrentId);
       const hash = torrentInfoHash(file);
-      const { category, savePath } = this.o.config.qbittorrent;
+      const { category, savePath } = this.config.qbittorrent;
       await this.o.qb.ensureCategory(category, savePath);
       await this.o.qb.addTorrent(file, { category, savePath, tags: 'lectern' });
 
@@ -224,8 +264,8 @@ export class RequestService {
     const req = toRequest(row);
     this.update(id, { status: 'importing', progress: 1, eta_seconds: null });
     try {
-      const library = this.o.config.libraries[req.kind];
-      if (!library) throw new RequestError('No library folder is set up for this kind of book.');
+      const { dir: library, absLibraryId: libraryId } = this.libraryFor(row.user_id, req.kind);
+      if (!library) throw new RequestError('This profile has no library folder for this kind of book.');
 
       const saveDir = this.localPath(qbSavePath);
       const names = (await this.o.qb.files(row.info_hash!)).map((f) => f.name);
@@ -240,7 +280,6 @@ export class RequestService {
         message = 'Copied rather than linked (the download and library are on different drives), so it uses extra space.';
       }
 
-      const libraryId = this.o.config.audiobookshelf.libraryIds[req.kind];
       if (libraryId && this.o.abs.isConfigured()) {
         try {
           await this.o.abs.scanLibrary(libraryId);
@@ -260,7 +299,7 @@ export class RequestService {
 
   /** qBittorrent's path for a folder → the same folder as Lectern sees it. */
   private localPath(qbPath: string): string {
-    const { pathFrom, pathTo } = this.o.config.qbittorrent;
+    const { pathFrom, pathTo } = this.config.qbittorrent;
     if (pathFrom && pathTo && qbPath.startsWith(pathFrom)) {
       return path.join(pathTo, qbPath.slice(pathFrom.length));
     }

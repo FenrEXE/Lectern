@@ -1,19 +1,32 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
-import type { HealthResponse } from '@lectern/shared';
+import { computed, onMounted, ref } from 'vue';
+import { RouterLink, useRouter } from 'vue-router';
+import type { LibraryRequest, StatusResponse } from '@lectern/shared';
 import { api } from '../api';
+import BookTile from '../components/BookTile.vue';
+import { isAdmin, me } from '../session';
 
 const router = useRouter();
 const query = ref('');
-const health = ref<HealthResponse | null>(null);
-const healthError = ref(false);
+const status = ref<StatusResponse>();
+const recent = ref<LibraryRequest[]>([]);
 
-const serviceNames: Record<keyof HealthResponse['services'], string> = {
+const serviceNames: Record<keyof StatusResponse['services'], string> = {
   mam: 'MyAnonamouse',
   qbittorrent: 'qBittorrent',
   audiobookshelf: 'Audiobookshelf',
 };
+
+const missing = computed(() =>
+  status.value ? (Object.keys(status.value.services) as Array<keyof StatusResponse['services']>).filter((k) => status.value!.services[k] !== 'configured') : [],
+);
+const inProgress = computed(() => recent.value.filter((r) => ['sending', 'downloading', 'importing'].includes(r.status)).length);
+const added = computed(() => recent.value.filter((r) => r.status === 'done').slice(0, 12));
+
+function greeting(): string {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+}
 
 function search(): void {
   const q = query.value.trim();
@@ -21,18 +34,15 @@ function search(): void {
 }
 
 onMounted(async () => {
-  try {
-    health.value = await api.health();
-  } catch {
-    healthError.value = true;
-  }
+  const [s, r] = await Promise.allSettled([api.status(), api.requests()]);
+  if (s.status === 'fulfilled') status.value = s.value;
+  if (r.status === 'fulfilled') recent.value = r.value;
 });
 </script>
 
 <template>
   <section class="hero">
-    <img src="/icon.svg" alt="" width="64" height="64" />
-    <h1>Lectern</h1>
+    <h1>{{ greeting() }}, {{ me?.name }}</h1>
     <p class="tagline">Find a book, tap once, start listening.</p>
 
     <form class="search" role="search" @submit.prevent="search">
@@ -49,48 +59,62 @@ onMounted(async () => {
     </form>
   </section>
 
-  <section class="status" aria-labelledby="status-heading">
-    <h2 id="status-heading">Connections</h2>
-    <p v-if="healthError" class="muted">Can't reach the Lectern server.</p>
-    <p v-else-if="!health" class="muted">Checking…</p>
-    <ul v-else>
-      <li v-for="(state, key) in health.services" :key="key">
-        <span class="dot" :class="state === 'configured' ? 'dot--on' : 'dot--off'" aria-hidden="true" />
-        {{ serviceNames[key] }}
-        <span class="muted">{{ state === 'configured' ? 'set up' : 'not set up yet' }}</span>
+  <!-- Setup still needed: admins get a link to Settings; others a plain note. -->
+  <section v-if="status && isAdmin && missing.length" class="panel notice">
+    <h2>Finish setting up</h2>
+    <p>Not connected yet: {{ missing.map((k) => serviceNames[k]).join(', ') }}.</p>
+    <RouterLink to="/settings" class="btn btn--primary">Open Settings</RouterLink>
+  </section>
+  <section v-else-if="status && !status.canAdd.audiobook && !status.canAdd.ebook" class="panel notice">
+    <p>You can search, but adding books isn’t set up for your profile yet. {{ isAdmin ? 'Set your library folders in Settings → Profiles.' : 'Ask an admin to set your library.' }}</p>
+  </section>
+
+  <RouterLink v-if="inProgress" to="/downloads" class="panel progress">
+    <span class="dot" aria-hidden="true" />
+    {{ inProgress }} book{{ inProgress === 1 ? '' : 's' }} on the way
+    <span class="arrow" aria-hidden="true">›</span>
+  </RouterLink>
+
+  <section v-if="added.length" class="recent">
+    <h2>Recently added</h2>
+    <ul class="shelf">
+      <li v-for="r in added" :key="r.id">
+        <BookTile
+          :book="r.book"
+          :kind="r.kind"
+          @open="r.book.authors[0] && router.push({ name: 'author', params: { name: r.book.authors[0] }, query: { kind: r.kind } })"
+        />
       </li>
     </ul>
-    <p v-if="health" class="muted version">Version {{ health.version }}</p>
   </section>
 </template>
 
 <style scoped>
 .hero {
-  text-align: center;
-  padding: 32px 0 24px;
+  padding: 16px 0 20px;
 }
 
 .hero h1 {
-  margin: 12px 0 4px;
-  font-size: 36px;
+  margin: 0 0 4px;
+  font-size: 30px;
+  line-height: 1.2;
 }
 
 .tagline {
-  margin: 0 0 24px;
+  margin: 0 0 18px;
   color: var(--text-muted);
 }
 
 .search {
   display: flex;
   gap: 8px;
-  max-width: 560px;
-  margin: 0 auto;
+  max-width: 640px;
 }
 
 .search input {
   flex: 1;
   min-width: 0;
-  min-height: 48px;
+  min-height: 50px;
   padding: 0 16px;
   font-size: 16px; /* 16px stops iOS zooming in on focus */
   color: var(--text);
@@ -100,7 +124,7 @@ onMounted(async () => {
 }
 
 .search button {
-  min-height: 48px;
+  min-height: 50px;
   padding: 0 20px;
   font-size: 16px;
   font-weight: 600;
@@ -111,61 +135,50 @@ onMounted(async () => {
   cursor: pointer;
 }
 
-.status {
-  max-width: 560px;
-  margin: 16px auto 0;
-  padding: 16px 20px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+.notice h2 {
+  margin: 0 0 4px;
+  font-size: 19px;
 }
 
-.status h2 {
-  margin: 0 0 8px;
-  font-size: 18px;
+.notice p {
+  margin: 0 0 12px;
 }
 
-.status ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.status li {
+.progress {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 0;
+  min-height: 56px;
+  font-weight: 600;
+  text-decoration: none;
 }
 
-.status li .muted {
-  margin-left: auto;
-}
-
-.muted {
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-.version {
-  margin: 8px 0 0;
-}
-
-.dot {
+.progress .dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
+  background: #b9832b;
 }
 
-.dot--on { background: #3e8a5c; }
-.dot--off { background: transparent; border: 2px solid var(--text-muted); }
+.progress .arrow {
+  margin-left: auto;
+  font-size: 22px;
+  color: var(--text-muted);
+}
 
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
+.recent h2 {
+  margin: 8px 0 10px;
+  font-size: 20px;
+}
+
+.shelf {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 132px;
+  gap: 14px;
+  margin: 0 -16px;
+  padding: 0 16px 6px;
+  overflow-x: auto;
+  list-style: none;
 }
 </style>

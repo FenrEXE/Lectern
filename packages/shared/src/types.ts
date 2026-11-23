@@ -57,6 +57,32 @@ export interface SuggestResponse {
   problems: SourceProblem[];
 }
 
+/** One series on an author page, books in reading order. */
+export interface SeriesGroup {
+  name: string;
+  books: BookSuggestion[];
+}
+
+/** What GET /api/author returns. */
+export interface AuthorResponse {
+  author: string;
+  kind: MediaKind;
+  series: SeriesGroup[];
+  /** Books not in a series, newest first. */
+  standalone: BookSuggestion[];
+  problems: SourceProblem[];
+}
+
+/** What GET /api/series returns. */
+export interface SeriesResponse {
+  series: string;
+  author?: string;
+  kind: MediaKind;
+  /** In reading order. Each book's first series is this one. */
+  books: BookSuggestion[];
+  problems: SourceProblem[];
+}
+
 /** A torrent on MAM, simplified. */
 export interface MamTorrent {
   id: string;
@@ -125,23 +151,72 @@ export interface LibraryRequest {
   message?: string;
   /** Where the book was filed, relative to the library folder. */
   libraryPath?: string;
+  /** Who asked for it. */
+  userId?: number;
+  userName?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A profile's own library for one kind of book. */
+export interface ProfileLibrary {
+  /** The folder books are filed into, as Lectern sees it. */
+  dir?: string;
+  /** The Audiobookshelf library to scan after filing. */
+  absLibraryId?: string;
+}
+
+/** A person who uses Lectern. */
+export interface Profile {
+  id: number;
+  name: string;
+  role: 'admin' | 'member';
+  /** Avatar colour, e.g. "#3E6B52". */
+  color: string;
+  defaultKind: MediaKind;
+  libraries: Record<MediaKind, ProfileLibrary>;
+}
+
+/** What the sign-in page shows for each profile. */
+export interface ProfileCard {
+  id: number;
+  name: string;
+  color: string;
+}
+
+/** What GET /api/auth/me returns. */
+export interface MeResponse {
+  /** True when no profiles exist yet, so the first visitor creates the admin. */
+  setupNeeded: boolean;
+  /** The signed-in profile, if any. */
+  me: Profile | null;
+}
+
+/** What GET /api/auth/profiles returns. */
+export interface ProfilesResponse {
+  setupNeeded: boolean;
+  /** Empty when the admin has chosen to hide names on the sign-in page. */
+  profiles: ProfileCard[];
 }
 
 /** Whether Lectern has the settings it needs for each outside service. */
 export type ServiceState = 'configured' | 'not-configured';
 
-/** What GET /api/health returns. */
+/** What GET /api/health returns (public: used by Docker's health check). */
 export interface HealthResponse {
   status: 'ok';
   name: 'Lectern';
+  version: string;
+}
+
+/** What GET /api/status returns (signed in). */
+export interface StatusResponse {
   version: string;
   services: {
     mam: ServiceState;
     qbittorrent: ServiceState;
     audiobookshelf: ServiceState;
   };
-  /** Whether "Add to Library" is set up for each kind of book. */
+  /** Whether "Add to Library" is set up for each kind of book, for this profile. */
   canAdd: Record<MediaKind, boolean>;
 }

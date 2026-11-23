@@ -10,7 +10,7 @@
 import os from 'node:os';
 import { normalizeText, type MediaKind } from '@lectern/shared';
 import { cacheGet, cacheSet, MINUTE } from '../cache.js';
-import type { Config } from '../config.js';
+import { readConfig, type ConfigSource } from '../config.js';
 import { getSetting, setSetting, type Db } from '../db.js';
 import { USER_AGENT, type FetchFn } from '../http.js';
 import { MamError, parseSearchResponse, type ParsedTorrent } from './parse.js';
@@ -30,7 +30,7 @@ const STORED_FROM = 'mam.cookie.from';
 
 export interface MamClientOptions {
   db: Db;
-  config: Config;
+  config: ConfigSource;
   fetch: FetchFn;
   /** For tests: replaceable clock, sleep and network-interface list. */
   now?: () => number;
@@ -52,6 +52,10 @@ export class MamClient {
     this.interfaceNames = opts.interfaceNames ?? (() => Object.keys(os.networkInterfaces()));
   }
 
+  private get config() {
+    return readConfig(this.opts.config);
+  }
+
   isConfigured(): boolean {
     return this.cookie() !== undefined;
   }
@@ -61,7 +65,7 @@ export class MamClient {
    * changed since (a newly pasted cookie always wins).
    */
   private cookie(): string | undefined {
-    const fromEnv = this.opts.config.mam.cookie;
+    const fromEnv = this.config.mam.cookie;
     const stored = getSetting(this.opts.db, STORED_COOKIE);
     const storedFrom = getSetting(this.opts.db, STORED_FROM);
     if (stored && storedFrom === (fromEnv ?? '')) return stored;
@@ -70,7 +74,7 @@ export class MamClient {
 
   private saveCookie(value: string): void {
     setSetting(this.opts.db, STORED_COOKIE, value);
-    setSetting(this.opts.db, STORED_FROM, this.opts.config.mam.cookie ?? '');
+    setSetting(this.opts.db, STORED_FROM, this.config.mam.cookie ?? '');
   }
 
   /** Search one category. Cached; queued behind any other MAM request. */
@@ -100,7 +104,7 @@ export class MamClient {
   private ready(): string {
     const cookie = this.cookie();
     if (!cookie) throw new MamError('not-configured', 'MAM isn’t set up yet. Add your mam_id in Lectern’s settings.');
-    const iface = this.opts.config.mam.requireInterface;
+    const iface = this.config.mam.requireInterface;
     if (iface && !this.interfaceNames().includes(iface)) {
       throw new MamError('vpn-down', `The VPN (${iface}) isn’t up, so Lectern won’t contact MAM.`);
     }

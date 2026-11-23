@@ -1,9 +1,9 @@
-// GET /api/health: is Lectern running, and which services has it been told about?
-// This never contacts MAM or anything else, so it's safe to call often
-// (Docker's healthcheck calls it every 30 seconds).
+// GET /api/health  public, for Docker's health check: is Lectern running?
+// GET /api/status  signed in: which services are set up, and can this profile add books?
+// Neither contacts MAM or anything else, so they're safe to call often.
 import type { FastifyInstance } from 'fastify';
-import type { HealthResponse, ServiceState } from '@lectern/shared';
-import type { Config } from '../config.js';
+import type { HealthResponse, ServiceState, StatusResponse } from '@lectern/shared';
+import { readConfig, type ConfigSource } from '../config.js';
 import type { MamClient } from '../mam/client.js';
 import type { RequestService } from '../requests/service.js';
 
@@ -12,21 +12,24 @@ const state = (...values: Array<string | undefined>): ServiceState =>
 
 export function healthRoutes(
   app: FastifyInstance,
-  config: Config,
+  configSource: ConfigSource,
   mam: MamClient,
   requests: RequestService,
   version: string,
 ): void {
-  app.get('/api/health', async (): Promise<HealthResponse> => ({
-    status: 'ok',
-    name: 'Lectern',
-    version,
-    services: {
-      mam: mam.isConfigured() ? 'configured' : 'not-configured',
-      // A username and password are optional: qBittorrent can skip logins for local addresses.
-      qbittorrent: state(config.qbittorrent.url),
-      audiobookshelf: state(config.audiobookshelf.url, config.audiobookshelf.apiKey),
-    },
-    canAdd: { audiobook: requests.canAdd('audiobook'), ebook: requests.canAdd('ebook') },
-  }));
+  app.get('/api/health', async (): Promise<HealthResponse> => ({ status: 'ok', name: 'Lectern', version }));
+
+  app.get('/api/status', async (req): Promise<StatusResponse> => {
+    const config = readConfig(configSource);
+    return {
+      version,
+      services: {
+        mam: mam.isConfigured() ? 'configured' : 'not-configured',
+        // A username and password are optional: qBittorrent can skip logins for local addresses.
+        qbittorrent: state(config.qbittorrent.url),
+        audiobookshelf: state(config.audiobookshelf.url, config.audiobookshelf.apiKey),
+      },
+      canAdd: { audiobook: requests.canAdd('audiobook', req.user), ebook: requests.canAdd('ebook', req.user) },
+    };
+  });
 }

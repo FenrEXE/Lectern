@@ -63,8 +63,8 @@ function badges(t: MamTorrent): string[] {
 onMounted(() => {
   dialog.value?.showModal();
   void check();
-  api.health().then(
-    (h) => (canAdd.value = h.canAdd[props.kind]),
+  api.status().then(
+    (s) => (canAdd.value = s.canAdd[props.kind]),
     () => undefined,
   );
 });
@@ -98,12 +98,25 @@ function onBackdrop(e: MouseEvent): void {
           :src="book.coverUrl"
           :title="book.title"
           :shape="kind === 'audiobook' ? 'square' : 'portrait'"
+          :width="150"
         />
         <div class="head__text">
           <h2 id="sheet-title">{{ book.title }}</h2>
           <p v-if="book.subtitle && book.subtitle !== seriesLabel(book.series)" class="subtitle">{{ book.subtitle }}</p>
-          <p v-if="seriesLabel(book.series)" class="series">{{ seriesLabel(book.series) }}</p>
-          <p class="muted">{{ joinNames(book.authors) }}</p>
+          <p v-if="book.series?.[0]" class="series">
+            <RouterLink
+              :to="{ name: 'series', params: { name: book.series[0].name }, query: { author: book.authors[0], kind } }"
+              @click="dialog?.close()"
+            >
+              {{ seriesLabel(book.series) }}
+            </RouterLink>
+          </p>
+          <p class="muted authors">
+            <template v-for="(a, i) in book.authors" :key="a">
+              <span v-if="i > 0">{{ i === book.authors.length - 1 ? ' and ' : ', ' }}</span>
+              <RouterLink :to="{ name: 'author', params: { name: a }, query: { kind } }" @click="dialog?.close()">{{ a }}</RouterLink>
+            </template>
+          </p>
           <p v-if="kind === 'audiobook' && book.narrators?.length" class="muted">
             Narrated by {{ joinNames(book.narrators) }}
           </p>
@@ -257,6 +270,8 @@ function onBackdrop(e: MouseEvent): void {
 
 .subtitle { font-size: 15px; }
 .series { font-weight: 600; color: var(--green-500); }
+.series a { color: inherit; text-underline-offset: 3px; }
+.authors a { color: var(--text); text-underline-offset: 3px; }
 .muted { color: var(--text-muted); font-size: 14px; }
 .small { font-size: 13px; }
 .center { text-align: center; }

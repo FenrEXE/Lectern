@@ -6,16 +6,23 @@ import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { HOUR, pruneCache } from './cache.js';
-import type { Config } from './config.js';
+import { installGuard, LoginLimiter } from './auth/guard.js';
+import { SessionStore } from './auth/sessions.js';
+import { UserStore } from './auth/users.js';
 import type { Db } from './db.js';
 import type { FetchFn } from './http.js';
 import { AbsClient } from './audiobookshelf/client.js';
 import { MamClient, type MamClientOptions } from './mam/client.js';
 import { QbClient } from './qbittorrent/client.js';
 import { RequestService } from './requests/service.js';
+import { adminRoutes } from './routes/admin.js';
+import { authRoutes } from './routes/auth.js';
+import { browseRoutes } from './routes/browse.js';
+import { coverRoutes } from './routes/covers.js';
 import { healthRoutes } from './routes/health.js';
 import { requestRoutes } from './routes/requests.js';
 import { searchRoutes } from './routes/search.js';
+import { Settings } from './settings.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,7 +30,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_WEB_DIR = path.resolve(here, '../../web/dist');
 
 export interface AppOptions {
-  config: Config;
+  /** Environment variables: the default settings, before anything saved in the admin panel. */
+  env: NodeJS.ProcessEnv;
   db: Db;
   version: string;
   /** Where the built web app lives. Defaults to packages/web/dist. */
@@ -35,35 +43,47 @@ export interface AppOptions {
   mam?: Partial<MamClientOptions>;
   /** Watch downloads in the background (off in tests). Default true. */
   watchDownloads?: boolean;
+  /** Fixed first-run setup code, for tests. Normally random and printed in the log. */
+  setupCode?: string;
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
+  const settings = new Settings(opts.db, opts.env);
+  // Every service reads settings through this, so admin-panel changes apply straight away.
+  const config = settings.config;
   const app = Fastify({
-    logger: opts.logger === false ? false : { level: opts.config.logLevel },
+    logger: opts.logger === false ? false : { level: config().logLevel },
+    bodyLimit: 1024 * 1024,
+    // Read once at startup: a proxy is part of how Lectern is deployed.
+    trustProxy: config().trustProxy,
   });
   const fetchFn = opts.fetch ?? fetch;
 
-  const mam = new MamClient({
-    db: opts.db,
-    config: opts.config,
-    fetch: fetchFn,
-    log: app.log,
-    ...opts.mam,
-  });
+  const users = new UserStore(opts.db);
+  const sessions = new SessionStore(opts.db);
+  installGuard(app, sessions, users);
 
-  const qb = new QbClient(opts.config.qbittorrent, fetchFn);
-  const abs = new AbsClient(opts.config.audiobookshelf, fetchFn);
-  const requests = new RequestService({ db: opts.db, config: opts.config, fetch: fetchFn, mam, qb, abs, log: app.log });
+  const mam = new MamClient({ db: opts.db, config, fetch: fetchFn, log: app.log, ...opts.mam });
+  const qb = new QbClient(() => config().qbittorrent, fetchFn);
+  const abs = new AbsClient(() => config().audiobookshelf, fetchFn);
+  const requests = new RequestService({ db: opts.db, config, users, fetch: fetchFn, mam, qb, abs, log: app.log });
 
-  healthRoutes(app, opts.config, mam, requests, opts.version);
-  searchRoutes(app, { db: opts.db, config: opts.config, fetch: fetchFn, mam });
+  healthRoutes(app, config, mam, requests, opts.version);
+  authRoutes(app, { users, sessions, limiter: new LoginLimiter(), settings, config, setupCode: opts.setupCode });
+  adminRoutes(app, { settings, config, users, sessions, mam, qb, abs, fetch: fetchFn });
+  searchRoutes(app, { db: opts.db, config, fetch: fetchFn, mam });
+  browseRoutes(app, { db: opts.db, config, fetch: fetchFn });
+  coverRoutes(app, { dataDir: config().dataDir, fetch: fetchFn });
   requestRoutes(app, requests);
 
   if (opts.watchDownloads !== false) requests.start();
   app.addHook('onClose', async () => requests.stop());
 
-  // Clear out expired cache entries hourly.
-  const pruner = setInterval(() => pruneCache(opts.db), HOUR);
+  // Clear out expired cache entries and sign-in sessions hourly.
+  const pruner = setInterval(() => {
+    pruneCache(opts.db);
+    sessions.pruneExpired();
+  }, HOUR);
   pruner.unref();
   app.addHook('onClose', async () => clearInterval(pruner));
 

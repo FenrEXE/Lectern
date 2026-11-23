@@ -1,24 +1,30 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { coverSrc, initials as initialsOf } from '../format';
 
 // A cover with a soft placeholder until it loads, and initials if it fails.
-const props = defineProps<{ src?: string; title: string; shape: 'square' | 'portrait' }>();
+// `src` is the cover's original address; it's fetched through Lectern's cover
+// cache as a small WebP. `width` is the largest size it's shown at.
+const props = defineProps<{ src?: string; title: string; shape: 'square' | 'portrait'; width?: number }>();
 const loaded = ref(false);
 const failed = ref(false);
+watch(
+  () => props.src,
+  () => {
+    loaded.value = false;
+    failed.value = false;
+  },
+);
 
-const initials = props.title
-  .split(/\s+/)
-  .filter((w) => /^[\p{L}\p{N}]/u.test(w))
-  .slice(0, 2)
-  .map((w) => w[0]!.toUpperCase())
-  .join('');
+const cached = computed(() => coverSrc(props.src, (props.width ?? 120) * 2));
+const initials = computed(() => initialsOf(props.title));
 </script>
 
 <template>
   <div class="cover" :class="`cover--${shape}`">
     <img
-      v-if="src && !failed"
-      :src="src"
+      v-if="cached && !failed"
+      :src="cached"
       alt=""
       loading="lazy"
       decoding="async"
@@ -26,7 +32,7 @@ const initials = props.title
       @load="loaded = true"
       @error="failed = true"
     />
-    <span v-if="!src || failed" class="initials" aria-hidden="true">{{ initials }}</span>
+    <span v-if="!cached || failed" class="initials" aria-hidden="true">{{ initials }}</span>
   </div>
 </template>
 

@@ -22,7 +22,7 @@ import {
   type SuggestResponse,
 } from '@lectern/shared';
 import { cached, cacheGet, cacheSet, HOUR } from '../cache.js';
-import type { Config } from '../config.js';
+import { readConfig, type ConfigSource } from '../config.js';
 import type { Db } from '../db.js';
 import { HttpError, type FetchFn } from '../http.js';
 import { searchAudible } from '../metadata/audible.js';
@@ -31,7 +31,7 @@ import { searchOpenLibrary } from '../metadata/openLibrary.js';
 
 export interface SuggestDeps {
   db: Db;
-  config: Config;
+  config: ConfigSource;
   fetch: FetchFn;
   log?: { warn: (obj: object, msg: string) => void };
 }
@@ -43,19 +43,20 @@ const MIN_SCORE = 0.4;
 const COOLDOWN = HOUR;
 
 /** Which source's details we trust most, best first, for each kind of book. */
-const SOURCE_ORDER: Record<MediaKind, MetadataSource[]> = {
+export const SOURCE_ORDER: Record<MediaKind, MetadataSource[]> = {
   audiobook: ['audible', 'google', 'openlibrary'],
   ebook: ['google', 'openlibrary', 'audible'],
 };
 
 /** A source's answer: each book with that source's own id for it. */
-type SourceResult = Array<{ sourceId: string; book: Book }>;
+export type SourceResult = Array<{ sourceId: string; book: Book }>;
 
 class SourceResting extends Error {}
 
 export async function suggestBooks(deps: SuggestDeps, query: string, kind: MediaKind): Promise<SuggestResponse> {
   const key = normalizeText(query);
-  const { db, config, fetch } = deps;
+  const { db, fetch } = deps;
+  const config = readConfig(deps.config);
 
   const lookups: Record<MetadataSource, () => Promise<SourceResult>> = {
     audible: async () =>
@@ -70,39 +71,13 @@ export async function suggestBooks(deps: SuggestDeps, query: string, kind: Media
   };
   const cacheKey = (s: MetadataSource) =>
     s === 'audible' ? `meta:audible:${config.audibleRegion}:${key}` : `meta:${s}:${key}`;
-  const resting = (s: MetadataSource) => cacheGet<boolean>(db, `meta:cooldown:${s}`) === true;
 
   // Open Library is the backup: always for ebooks, and for audiobooks only
   // while Google is resting.
-  const sources = SOURCE_ORDER[kind].filter((s) => s !== 'openlibrary' || kind === 'ebook' || resting('google'));
+  const sources = SOURCE_ORDER[kind].filter((s) => s !== 'openlibrary' || kind === 'ebook' || isResting(db, 'google'));
 
-  const settled = await Promise.allSettled(
-    sources.map(async (s) => {
-      // A previous answer for the same words is fine to reuse even while resting.
-      const hit = cacheGet<SourceResult>(db, cacheKey(s));
-      if (hit) return hit;
-      if (resting(s)) throw new SourceResting();
-      return cached(db, cacheKey(s), 24 * HOUR, lookups[s]);
-    }),
-  );
-
-  const problems: SourceProblem[] = [];
-  const candidates: BookSuggestion[] = [];
-  settled.forEach((result, i) => {
-    const source = sources[i]!;
-    if (result.status === 'fulfilled') {
-      candidates.push(...toSuggestions(result.value, source, query, kind));
-      return;
-    }
-    const err = result.reason;
-    const hitLimit = isLimitError(err);
-    if (hitLimit) cacheSet(db, `meta:cooldown:${source}`, true, COOLDOWN);
-    const overLimit = hitLimit || err instanceof SourceResting;
-    if (!(err instanceof SourceResting)) {
-      deps.log?.warn({ source, err: String(err) }, 'Book lookup failed');
-    }
-    problems.push({ source, reason: overLimit ? 'limit' : 'error' });
-  });
+  const { results, problems } = await askSources(deps, sources, (s) => ({ cacheKey: cacheKey(s), load: lookups[s] }));
+  const candidates = results.flatMap(({ source, items }) => toSuggestions(items, source, query, kind));
 
   const suggestions = mergeDuplicates(candidates, kind)
     .filter((s) => s.score >= MIN_SCORE)
@@ -115,8 +90,50 @@ export async function suggestBooks(deps: SuggestDeps, query: string, kind: Media
   return { query, kind, didYouMean, suggestions, problems };
 }
 
+/** True while a source is resting after hitting its limit. */
+export const isResting = (db: Db, s: MetadataSource) => cacheGet<boolean>(db, `meta:cooldown:${s}`) === true;
+
+/**
+ * Ask several book info sources at once. Each answer is cached for 24 hours;
+ * a source that says "too many requests" rests for an hour. One source
+ * failing never stops the others.
+ */
+export async function askSources(
+  deps: Pick<SuggestDeps, 'db' | 'log'>,
+  sources: MetadataSource[],
+  plan: (s: MetadataSource) => { cacheKey: string; load: () => Promise<SourceResult> },
+): Promise<{ results: Array<{ source: MetadataSource; items: SourceResult }>; problems: SourceProblem[] }> {
+  const { db } = deps;
+  const settled = await Promise.allSettled(
+    sources.map(async (s) => {
+      const { cacheKey, load } = plan(s);
+      // A previous answer for the same words is fine to reuse even while resting.
+      const hit = cacheGet<SourceResult>(db, cacheKey);
+      if (hit) return hit;
+      if (isResting(db, s)) throw new SourceResting();
+      return cached(db, cacheKey, 24 * HOUR, load);
+    }),
+  );
+
+  const results: Array<{ source: MetadataSource; items: SourceResult }> = [];
+  const problems: SourceProblem[] = [];
+  settled.forEach((result, i) => {
+    const source = sources[i]!;
+    if (result.status === 'fulfilled') {
+      results.push({ source, items: result.value });
+      return;
+    }
+    const err = result.reason;
+    const hitLimit = isLimitError(err);
+    if (hitLimit) cacheSet(db, `meta:cooldown:${source}`, true, COOLDOWN);
+    if (!(err instanceof SourceResting)) deps.log?.warn({ source, err: String(err) }, 'Book lookup failed');
+    problems.push({ source, reason: hitLimit || err instanceof SourceResting ? 'limit' : 'error' });
+  });
+  return { results, problems };
+}
+
 /** "Too many requests" or "quota exceeded" (Google uses both 429 and 403). */
-function isLimitError(err: unknown): boolean {
+export function isLimitError(err: unknown): boolean {
   if (!(err instanceof HttpError)) return false;
   return err.status === 429 || (err.status === 403 && /quota|limit/i.test(err.message));
 }

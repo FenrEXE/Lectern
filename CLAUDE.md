@@ -120,6 +120,31 @@ docker build -t lectern .
 - Use hardlinks when downloads and libraries share a drive, so seeding keeps
   working and no space is wasted.
 
+### Profiles, sign-in and settings
+- Every `/api` route needs a signed-in profile except health, sign-in and
+  first-run setup (`auth/guard.ts`). `/api/admin/*` needs an admin. The guard
+  decides by the **matched route pattern** (`req.routeOptions.url`), never the
+  raw address, because `/%61pi/...` also reaches `/api/...`. State-changing
+  requests must come from Lectern's own page (Origin check).
+- First-run setup needs a one-time code that Lectern prints in its log.
+- Passwords are hashed with scrypt; session tokens are stored only as SHA-256
+  hashes. Sign-in tries count as they start (so parallel guesses are limited
+  too): 5 per address and 20 per name per 15 minutes.
+- Connection settings live in the database (`settings.ts`) on top of the
+  environment: the environment gives defaults, saved values win, and changes
+  apply without a restart. Read config through `readConfig()` / the getter, never
+  copy it once at startup. Secrets are never sent back to the browser, only
+  whether they're set and their last 4 characters. Changing qBittorrent's or
+  Audiobookshelf's address needs its password or key typed again, so a saved
+  secret can't be sent somewhere new. `MAM_REQUIRE_INTERFACE` is
+  environment-only.
+- Each profile has its own library folders and Audiobookshelf libraries.
+  `LIBRARY_*` and `ABS_*_LIBRARY_ID` only seed the first admin. A request files
+  into the library of the profile that made it.
+- Covers are only fetched through `coverFetch.ts`: https, a short list of known
+  cover hosts, and every redirect re-checked. The web app shows them through
+  `/api/cover`, which caches small WebP copies.
+
 ### Metadata
 - Search suggestions come from Audible's public catalogue (best for audio:
   forgiving of typos, knows series) and Google Books (best for ebooks: ISBNs).
@@ -142,11 +167,14 @@ docker build -t lectern .
 2. Smart search: the metadata lookup (Audible, Google Books, Open Library),
    "did you mean", then a MAM fan-out for the chosen book, merge and rank ✅
    (tested against live MAM through the VPN)
-3. Author and series pages (series in reading order)
-4. **qBittorrent hand-off and hands-off Audiobookshelf import.** Built (done
-   before step 3 by choice); still to test with a real download.
-5. The new UI and cover caching (small WebP thumbnails)
-6. Profiles (separate libraries per person), the ebook side, a watch list, new releases
+3. Author and series pages (series in reading order) ✅
+4. **qBittorrent hand-off and hands-off Audiobookshelf import.** Built; still
+   to test with a real download.
+5. The new UI and cover caching (small WebP thumbnails), installable on a
+   phone ✅ (offline support later)
+6. Profiles with sign-in and separate libraries per person, and an admin
+   Settings panel for all connections ✅. Still to do: the ebook side, a watch
+   list, new releases
 7. Tidy up: an admin-only tool that fixes existing Audiobookshelf libraries (dry run + undo)
 8. Polish, a one-command install and docs, then check with MAM before sharing
 

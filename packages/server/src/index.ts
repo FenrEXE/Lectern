@@ -8,9 +8,11 @@ const require = createRequire(import.meta.url);
 const { version } = require('../package.json') as { version: string };
 
 async function main(): Promise<void> {
+  // Settings come from the environment, plus anything saved in the admin panel.
+  // The environment is checked here first so a typo stops Lectern with a clear message.
   const config = loadConfig();
   const db = openDb(config.dataDir);
-  const app = await buildApp({ config, db, version });
+  const app = await buildApp({ env: process.env, db, version });
 
   // Shut down cleanly when Docker stops the container.
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { LibraryRequest } from '@lectern/shared';
-import { buildApp } from '../src/app.js';
+import { testApp } from './helpers.js';
 import { AbsClient } from '../src/audiobookshelf/client.js';
 import { loadConfig } from '../src/config.js';
 import { openMemoryDb } from '../src/db.js';
@@ -38,7 +38,7 @@ const finalEmpire = {
   series: [{ name: 'Mistborn', number: '1' }],
   asin: 'B002UZMLXM',
   publishedYear: 2009,
-  coverUrl: 'https://covers.example/final.jpg',
+  coverUrl: 'https://m.media-amazon.com/images/I/final.jpg',
 };
 
 const tmp = (name: string) => fs.mkdtempSync(path.join(os.tmpdir(), `lectern-${name}-`));
@@ -136,7 +136,7 @@ describe('library importer', () => {
     fs.mkdirSync(path.join(downloads, 'TFE'));
     fs.writeFileSync(path.join(downloads, 'TFE', 'book.m4b'), 'audio');
     const files = chooseFiles('audiobook', downloads, ['TFE/book.m4b']);
-    const fetchFn = fakeFetch([[/covers\.example/, () => new Response(Buffer.from('jpg'), { headers: { 'Content-Type': 'image/jpeg' } })]]);
+    const fetchFn = fakeFetch([[/m\.media-amazon\.com/, () => new Response(Buffer.from('jpg'), { headers: { 'Content-Type': 'image/jpeg' } })]]);
 
     const result = await importBook({ fetch: fetchFn, library, book: finalEmpire, files });
     const dir = path.join(library, 'Brandon Sanderson', 'Mistborn', 'Book 1 - The Final Empire');
@@ -175,7 +175,7 @@ describe('Add to Library, start to finish', () => {
           ),
       ],
       [/torrents\/files/, () => json([{ name: 'TFE/book.m4b', size: 5, progress: 1 }, { name: 'TFE/notes.nfo', size: 1, progress: 1 }])],
-      [/covers\.example/, () => new Response(Buffer.from('jpg'), { headers: { 'Content-Type': 'image/jpeg' } })],
+      [/m\.media-amazon\.com/, () => new Response(Buffer.from('jpg'), { headers: { 'Content-Type': 'image/jpeg' } })],
       [/abs\/api\/libraries\/lib-1\/scan/, () => new Response('OK')],
     ]);
     const config = loadConfig({
@@ -254,10 +254,10 @@ describe('Add to Library, start to finish', () => {
   });
 
   it('POST /api/requests validates input', async () => {
-    const app = await buildApp({ config: loadConfig({}), db: openMemoryDb(), version: '0', webDir: tmp('noweb'), logger: false, watchDownloads: false });
-    const bad = await app.inject({ method: 'POST', url: '/api/requests', payload: { kind: 'audiobook', torrent: { id: 'x' } } });
+    const { app, asAdmin } = await testApp();
+    const bad = await asAdmin({ method: 'POST', url: '/api/requests', payload: { kind: 'audiobook', torrent: { id: 'x' } } });
     expect(bad.statusCode).toBe(400);
-    const unset = await app.inject({
+    const unset = await asAdmin({
       method: 'POST',
       url: '/api/requests',
       payload: { kind: 'audiobook', torrent: { id: '1', title: 't' }, book: { title: 'A', authors: [] } },

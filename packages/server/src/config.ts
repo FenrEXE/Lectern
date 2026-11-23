@@ -20,6 +20,7 @@ const schema = z.object({
   HOST: z.string().default('0.0.0.0'),
   DATA_DIR: z.string().default('./data'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  TRUST_PROXY: optional,
   MAM_ID: optional,
   MAM_REQUIRE_INTERFACE: optional,
   QB_URL: optionalUrl,
@@ -50,6 +51,12 @@ export interface Config {
   host: string;
   dataDir: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
+  /**
+   * Behind a reverse proxy: which proxy to believe about the visitor's real
+   * address and https: true (any), or the proxy's addresses/CIDRs.
+   * Unset = no proxy, trust nobody.
+   */
+  trustProxy: boolean | string;
   mam: {
     cookie?: string;
     /** A network interface (e.g. "wg0") that must exist before Lectern talks to MAM. */
@@ -77,6 +84,14 @@ export interface Config {
   googleBooksApiKey?: string;
 }
 
+/**
+ * Settings can change while Lectern runs (the admin panel saves them), so
+ * services take either a fixed Config (tests) or a function returning the
+ * current one, and read it fresh each time.
+ */
+export type ConfigSource = Config | (() => Config);
+export const readConfig = (source: ConfigSource): Config => (typeof source === 'function' ? source() : source);
+
 /** Parse and check settings. Throws a readable error listing every bad value. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = schema.safeParse(env);
@@ -95,6 +110,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     host: e.HOST,
     dataDir: path.resolve(e.DATA_DIR),
     logLevel: e.LOG_LEVEL,
+    trustProxy: parseTrustProxy(e.TRUST_PROXY),
     mam: { cookie: mamCookie || undefined, requireInterface: e.MAM_REQUIRE_INTERFACE },
     qbittorrent: {
       url: trimSlash(e.QB_URL),
@@ -114,4 +130,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     audibleRegion: e.AUDIBLE_REGION,
     googleBooksApiKey: e.GOOGLE_BOOKS_API_KEY,
   };
+}
+
+/** "true" → trust any proxy; "172.18.0.0/16,10.0.0.2" → only those addresses. */
+function parseTrustProxy(value?: string): boolean | string {
+  if (!value || value === 'false') return false;
+  return value === 'true' ? true : value;
 }

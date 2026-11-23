@@ -59,11 +59,24 @@ export function hasError(t: QbTorrent): boolean {
 
 export class QbClient {
   private sid?: string;
+  /** Which url/user/password the current session belongs to. */
+  private sidFor?: string;
 
   constructor(
-    private readonly settings: QbSettings,
+    private readonly source: QbSettings | (() => QbSettings),
     private readonly fetchFn: FetchFn,
   ) {}
+
+  /** Settings can change in the admin panel; a change means logging in again. */
+  private get settings(): QbSettings {
+    const s = typeof this.source === 'function' ? this.source() : this.source;
+    const key = JSON.stringify([s.url, s.username, s.password]);
+    if (key !== this.sidFor) {
+      this.sid = undefined;
+      this.sidFor = key;
+    }
+    return s;
+  }
 
   isConfigured(): boolean {
     return !!this.settings.url;

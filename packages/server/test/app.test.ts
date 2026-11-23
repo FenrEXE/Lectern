@@ -2,11 +2,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildApp } from '../src/app.js';
+import { testApp } from './helpers.js';
 import { loadConfig } from '../src/config.js';
 import { getSetting, openDb, openMemoryDb, setSetting } from '../src/db.js';
 
-const noWeb = path.join(os.tmpdir(), 'lectern-no-web');
 
 describe('config', () => {
   it('treats blank values as not set and trims trailing slashes', () => {
@@ -34,20 +33,25 @@ describe('database', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lectern-db-'));
     openDb(dir).close();
     const db = openDb(dir);
-    expect(db.pragma('user_version', { simple: true })).toBe(2);
+    expect(db.pragma('user_version', { simple: true })).toBe(3);
     db.close();
   });
 });
 
-describe('GET /api/health', () => {
-  it('reports which services are configured, without secrets', async () => {
-    const config = loadConfig({ MAM_ID: 'secret-cookie', QB_URL: 'http://qb:8080' });
-    const app = await buildApp({ config, db: openMemoryDb(), version: '9.9.9', webDir: noWeb, logger: false, watchDownloads: false });
+describe('health and status', () => {
+  it('health is public and says nothing about services', async () => {
+    const { app } = await testApp({ MAM_ID: 'secret-cookie' });
     const res = await app.inject({ method: 'GET', url: '/api/health' });
     expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ status: 'ok', name: 'Lectern', version: '9.9.9' });
+    await app.close();
+  });
+
+  it('status needs sign-in, and reports services without secrets', async () => {
+    const { app, asAdmin } = await testApp({ MAM_ID: 'secret-cookie', QB_URL: 'http://qb:8080' });
+    expect((await app.inject({ url: '/api/status' })).statusCode).toBe(401);
+    const res = await asAdmin({ url: '/api/status' });
     expect(res.json()).toEqual({
-      status: 'ok',
-      name: 'Lectern',
       version: '9.9.9',
       services: { mam: 'configured', qbittorrent: 'configured', audiobookshelf: 'not-configured' },
       canAdd: { audiobook: false, ebook: false }, // no library folders set
@@ -56,10 +60,9 @@ describe('GET /api/health', () => {
     await app.close();
   });
 
-  it('returns JSON 404 for unknown API paths', async () => {
-    const app = await buildApp({ config: loadConfig({}), db: openMemoryDb(), version: '0', webDir: noWeb, logger: false, watchDownloads: false });
-    const res = await app.inject({ method: 'GET', url: '/api/nope' });
-    expect(res.statusCode).toBe(404);
+  it('returns JSON 404 for unknown API paths once signed in', async () => {
+    const { app, asAdmin } = await testApp();
+    expect((await asAdmin({ url: '/api/nope' })).statusCode).toBe(404);
     await app.close();
   });
 });

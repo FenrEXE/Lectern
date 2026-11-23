@@ -43,6 +43,30 @@ const migrations: string[] = [
   );
   CREATE INDEX requests_status ON requests (status);
   `,
+  // 3: profiles, sign-in sessions, and who asked for each book
+  `
+  CREATE TABLE users (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                  TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash         TEXT NOT NULL,
+    role                  TEXT NOT NULL DEFAULT 'member',
+    color                 TEXT NOT NULL,
+    default_kind          TEXT NOT NULL DEFAULT 'audiobook',
+    audiobook_dir         TEXT,
+    audiobook_abs_library TEXT,
+    ebook_dir             TEXT,
+    ebook_abs_library     TEXT,
+    created_at            TEXT NOT NULL
+  );
+  CREATE TABLE sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE INDEX sessions_user ON sessions (user_id);
+  ALTER TABLE requests ADD COLUMN user_id INTEGER REFERENCES users (id) ON DELETE SET NULL;
+  `,
 ];
 
 /** Open (or create) the database and bring its schema up to date. */
@@ -58,6 +82,7 @@ export function openDb(dataDir: string): Db {
 /** Open an in-memory database, for tests. */
 export function openMemoryDb(): Db {
   const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
   migrate(db);
   return db;
 }
@@ -79,6 +104,10 @@ export function getSetting(db: Db, key: string): string | undefined {
     | { value: string }
     | undefined;
   return row?.value;
+}
+
+export function deleteSetting(db: Db, key: string): void {
+  db.prepare('DELETE FROM kv WHERE key = ?').run(key);
 }
 
 export function setSetting(db: Db, key: string, value: string): void {

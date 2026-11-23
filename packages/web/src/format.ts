@@ -22,3 +22,22 @@ export function joinNames(names?: string[]): string {
   if (names.length === 1) return names[0]!;
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
+
+/**
+ * A cover address served through Lectern: shrunk to a small WebP and cached,
+ * so lists load fast. Widths are rounded up to 120, 300 or 600.
+ */
+export function coverSrc(url: string | undefined, width = 300): string | undefined {
+  if (!url) return undefined;
+  return `/api/cover?${new URLSearchParams({ u: url, w: String(width) })}`;
+}
+
+/** "Brandon Sanderson" → "BS" */
+export function initials(text: string): string {
+  return text
+    .split(/\s+/)
+    .filter((w) => /^[\p{L}\p{N}]/u.test(w))
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join('');
+}

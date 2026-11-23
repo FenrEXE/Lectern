@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { AvailabilityResponse, SuggestResponse } from '@lectern/shared';
-import { buildApp } from '../src/app.js';
+import { testApp } from './helpers.js';
 import { loadConfig } from '../src/config.js';
 import { openMemoryDb } from '../src/db.js';
 import { MamClient, readMamCookie } from '../src/mam/client.js';
@@ -314,18 +314,11 @@ describe('availability', () => {
 });
 
 describe('search routes', () => {
-  it('GET /api/suggest validates and answers', async () => {
-    const app = await buildApp({
-      config: loadConfig({}),
-      db: openMemoryDb(),
-      version: '0',
-      webDir: noWeb,
-      logger: false,
-      watchDownloads: false,
-      fetch: metadataFetch(),
-    });
-    expect((await app.inject({ url: '/api/suggest?q=a' })).statusCode).toBe(400);
-    const res = await app.inject({ url: '/api/suggest?q=sandersen%20mistborn&kind=audiobook' });
+  it('GET /api/suggest needs sign-in, validates and answers', async () => {
+    const { app, asAdmin } = await testApp({}, { fetch: metadataFetch() });
+    expect((await app.inject({ url: '/api/suggest?q=mistborn' })).statusCode).toBe(401);
+    expect((await asAdmin({ url: '/api/suggest?q=a' })).statusCode).toBe(400);
+    const res = await asAdmin({ url: '/api/suggest?q=sandersen%20mistborn&kind=audiobook' });
     expect(res.statusCode).toBe(200);
     const body = res.json<SuggestResponse>();
     expect(body.suggestions[0]?.title).toBe('The Final Empire');
@@ -333,12 +326,8 @@ describe('search routes', () => {
   });
 
   it('POST /api/availability answers without MAM set up', async () => {
-    const app = await buildApp({ config: loadConfig({}), db: openMemoryDb(), version: '0', webDir: noWeb, logger: false, watchDownloads: false });
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/availability',
-      payload: { kind: 'audiobook', book: finalEmpire },
-    });
+    const { app, asAdmin } = await testApp();
+    const res = await asAdmin({ method: 'POST', url: '/api/availability', payload: { kind: 'audiobook', book: finalEmpire } });
     expect(res.json<AvailabilityResponse>().status).toBe('not-configured');
     await app.close();
   });

@@ -10,7 +10,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Book, MediaKind } from '@lectern/shared';
-import { USER_AGENT, type FetchFn } from '../http.js';
+import { fetchCover } from '../coverFetch.js';
+import type { FetchFn } from '../http.js';
 
 /** File types worth filing, per kind. Everything else in a torrent (nfo, txt...) is left behind. */
 export const MEDIA_TYPES: Record<MediaKind, string[]> = {
@@ -150,14 +151,9 @@ export async function importBook(opts: {
 
 /** Download the cover next to the book. A missing cover never fails the import. */
 async function saveCover(fetchFn: FetchFn, url: string, dir: string): Promise<boolean> {
-  if (!/^https:\/\//.test(url)) return false;
   try {
-    const res = await fetchFn(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(15_000) });
-    const type = res.headers.get('content-type') ?? '';
-    if (!res.ok || !type.startsWith('image/')) return false;
-    const data = Buffer.from(await res.arrayBuffer());
-    if (data.length > 10 * 1024 * 1024) return false;
-    const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : 'jpg';
+    const { data, contentType } = await fetchCover(fetchFn, url, 10 * 1024 * 1024);
+    const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
     await fs.writeFile(path.join(dir, `cover.${ext}`), data);
     return true;
   } catch {

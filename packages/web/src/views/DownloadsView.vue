@@ -5,24 +5,34 @@ import type { LibraryRequest } from '@lectern/shared';
 import { api } from '../api';
 import BookCover from '../components/BookCover.vue';
 import { joinNames, seriesLabel } from '../format';
+import { isAdmin } from '../session';
 
 // Everything added to the library, newest first. While anything is still on
 // its way, the list refreshes every few seconds (from Lectern only, never MAM).
 const items = ref<LibraryRequest[]>();
 const error = ref<string>();
 const retrying = ref<number>();
+// Admins can switch between their own downloads and everyone's.
+const everyone = ref(false);
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 const active = computed(() => items.value?.some((r) => ['sending', 'downloading', 'importing'].includes(r.status)));
 
 async function load(): Promise<void> {
   try {
-    items.value = await api.requests();
+    items.value = await api.requests(everyone.value);
     error.value = undefined;
   } catch (err) {
     error.value = (err as Error).message;
   }
   timer = setTimeout(load, active.value ? 3_000 : 30_000);
+}
+
+function showEveryone(value: boolean): void {
+  everyone.value = value;
+  clearTimeout(timer);
+  items.value = undefined;
+  void load();
 }
 
 async function retry(id: number): Promise<void> {
@@ -64,6 +74,10 @@ onBeforeUnmount(() => clearTimeout(timer));
 
 <template>
   <h1>Downloads</h1>
+  <div v-if="isAdmin" class="segmented whose" role="group" aria-label="Whose downloads">
+    <button type="button" :aria-pressed="!everyone" @click="showEveryone(false)">Mine</button>
+    <button type="button" :aria-pressed="everyone" @click="showEveryone(true)">Everyone’s</button>
+  </div>
 
   <p v-if="error" class="notice">Can’t load downloads: {{ error }}</p>
   <p v-else-if="!items" class="muted">Loading…</p>
@@ -79,6 +93,7 @@ onBeforeUnmount(() => clearTimeout(timer));
         <span class="item__title">{{ r.book.title }}</span>
         <span v-if="seriesLabel(r.book.series)" class="item__series">{{ seriesLabel(r.book.series) }}</span>
         <span class="muted">{{ joinNames(r.book.authors) }}</span>
+        <span v-if="everyone && r.userName" class="muted">For {{ r.userName }}</span>
 
         <span class="status">
           <span class="dot" aria-hidden="true" />
@@ -106,6 +121,10 @@ onBeforeUnmount(() => clearTimeout(timer));
 </template>
 
 <style scoped>
+.whose {
+  margin: 0 0 14px;
+}
+
 .list {
   display: grid;
   gap: 10px;

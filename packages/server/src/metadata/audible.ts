@@ -22,10 +22,25 @@ export interface AudibleBook extends Book {
 }
 
 export async function searchAudible(fetchFn: FetchFn, query: string, region = 'us'): Promise<AudibleBook[]> {
+  return searchAudibleBy(fetchFn, { keywords: query }, region);
+}
+
+/**
+ * Search Audible by keywords and/or a specific author, e.g. everything by
+ * one author for the author page. Audible returns at most 50 per request.
+ */
+export async function searchAudibleBy(
+  fetchFn: FetchFn,
+  by: { keywords?: string; author?: string; title?: string },
+  region = 'us',
+  count = 20,
+): Promise<AudibleBook[]> {
   const host = AUDIBLE_HOSTS[region] ?? AUDIBLE_HOSTS.us;
   const params = new URLSearchParams({
-    keywords: query,
-    num_results: '20',
+    ...(by.keywords ? { keywords: by.keywords } : {}),
+    ...(by.author ? { author: by.author } : {}),
+    ...(by.title ? { title: by.title } : {}),
+    num_results: String(Math.min(50, count)),
     products_sort_by: 'Relevance',
     response_groups: 'contributors,product_desc,product_attrs,media,series',
     image_sizes: '500',

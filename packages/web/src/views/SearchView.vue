@@ -5,6 +5,7 @@ import type { BookSuggestion, MediaKind, SuggestResponse } from '@lectern/shared
 import { api } from '../api';
 import BookRow from '../components/BookRow.vue';
 import BookSheet from '../components/BookSheet.vue';
+import { defaultKind } from '../session';
 
 // The search lives in the address (?q=...&kind=...), so results survive a
 // refresh and the back button works as expected.
@@ -12,7 +13,9 @@ const route = useRoute();
 const router = useRouter();
 
 const q = computed(() => (typeof route.query.q === 'string' ? route.query.q : ''));
-const kind = computed<MediaKind>(() => (route.query.kind === 'ebook' ? 'ebook' : 'audiobook'));
+const kind = computed<MediaKind>(() =>
+  route.query.kind === 'ebook' || route.query.kind === 'audiobook' ? route.query.kind : defaultKind.value,
+);
 
 const typed = ref(q.value);
 const result = ref<SuggestResponse>();

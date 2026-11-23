@@ -7,8 +7,13 @@ export interface GoogleBook extends Book {
   googleId: string;
 }
 
-export async function searchGoogleBooks(fetchFn: FetchFn, query: string, apiKey?: string): Promise<GoogleBook[]> {
-  const params = new URLSearchParams({ q: query, maxResults: '20', printType: 'books' });
+export async function searchGoogleBooks(
+  fetchFn: FetchFn,
+  query: string,
+  apiKey?: string,
+  count = 20,
+): Promise<GoogleBook[]> {
+  const params = new URLSearchParams({ q: query, maxResults: String(Math.min(40, count)), printType: 'books' });
   if (apiKey) params.set('key', apiKey);
   const json = await getJson(fetchFn, `https://www.googleapis.com/books/v1/volumes?${params}`);
   return parseGoogleBooks(json);
