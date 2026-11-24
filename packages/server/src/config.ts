@@ -26,6 +26,7 @@ const schema = z.object({
   QB_URL: optionalUrl,
   QB_USER: optional,
   QB_PASS: optional,
+  QB_API_KEY: optional,
   QB_CATEGORY: z.string().trim().default('lectern'),
   QB_SAVE_PATH: optional,
   QB_PATH_FROM: optional,
@@ -66,6 +67,8 @@ export interface Config {
     url?: string;
     username?: string;
     password?: string;
+    /** qBittorrent 5.2+ API key; used instead of username/password when set. */
+    apiKey?: string;
     /** Category Lectern's downloads go in. */
     category: string;
     /** Where qBittorrent should save them (as qBittorrent sees it). */
@@ -116,6 +119,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       url: trimSlash(e.QB_URL),
       username: e.QB_USER,
       password: e.QB_PASS,
+      apiKey: e.QB_API_KEY,
       category: e.QB_CATEGORY || 'lectern',
       savePath: e.QB_SAVE_PATH,
       pathFrom: e.QB_PATH_FROM,

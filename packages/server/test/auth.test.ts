@@ -300,10 +300,39 @@ describe('connection settings', () => {
     expect((await save({ ABS_URL: null, ABS_API_KEY: null })).statusCode).toBe(200); // back to the environment's pair
 
     expect((await save({ QB_URL: 'http://qb2:8080' })).json().error).toMatch(/password again/);
+    expect((await save({ QB_URL: 'http://qb2:8080', QB_PASS: 'retyped', QB_API_KEY: 'qbt_new' })).statusCode).toBe(200);
+    expect((await save({ QB_URL: 'http://qb3:8080', QB_PASS: 'retyped-again' })).json().error).toMatch(/API key again/);
+    expect((await save({ QB_URL: null, QB_PASS: null, QB_API_KEY: null })).statusCode).toBe(200);
     expect((await save({ QB_URL: 'http://qb:8080/' })).statusCode).toBe(200); // same address, just a trailing slash
 
     expect((await save({ MAM_REQUIRE_INTERFACE: '' })).json().error).toMatch(/Unknown setting/);
     expect((await asAdmin({ url: '/api/admin/settings' })).json().mamInterface).toBe('wg0');
+    await app.close();
+  });
+
+  it('uses a qBittorrent API key instead of signing in when one is set', async () => {
+    const fetchFn = fakeFetch([
+      [/qb:8080\/api\/v2\/auth\/login/, () => { throw new Error('should not log in with a key'); }],
+      [/qb:8080\/api\/v2\/app\/version/, () => new Response('v5.2.0')],
+    ]);
+    const { app, asAdmin } = await testApp({ QB_URL: 'http://qb:8080', QB_PASS: 'pw', QB_API_KEY: 'qbt_abcdefghijklmnopqrstuvwxyz12' }, { fetch: fetchFn });
+    expect((await asAdmin({ method: 'POST', url: '/api/admin/test/qbittorrent' })).json()).toEqual({
+      ok: true,
+      message: 'Signed in to qBittorrent v5.2.0 with the API key.',
+    });
+    const sent = fetchFn.calls.find((c) => c.url.includes('/app/version'))!;
+    expect((sent.init?.headers as Record<string, string>).Authorization).toBe('Bearer qbt_abcdefghijklmnopqrstuvwxyz12');
+    const view = (await asAdmin({ url: '/api/admin/settings' })).json();
+    expect(JSON.stringify(view)).not.toContain('qbt_abcdefghij');
+    await app.close();
+  });
+
+  it('says clearly when qBittorrent refuses the API key', async () => {
+    const fetchFn = fakeFetch([[/qb:8080/, () => new Response('Unauthorized', { status: 401 })]]);
+    const { app, asAdmin } = await testApp({ QB_URL: 'http://qb:8080', QB_API_KEY: 'qbt_wrong' }, { fetch: fetchFn });
+    const res = (await asAdmin({ method: 'POST', url: '/api/admin/test/qbittorrent' })).json();
+    expect(res).toMatchObject({ ok: false });
+    expect(res.message).toMatch(/didn’t accept the API key/);
     await app.close();
   });
 
@@ -316,7 +345,7 @@ describe('connection settings', () => {
     const { app, asAdmin } = await testApp({ QB_URL: 'http://qb:8080', ABS_URL: 'http://abs', ABS_API_KEY: 'k' }, { fetch: fetchFn });
     expect((await asAdmin({ method: 'POST', url: '/api/admin/test/qbittorrent' })).json()).toEqual({
       ok: true,
-      message: 'Signed in to qBittorrent v5.0.4.',
+      message: 'Signed in to qBittorrent v5.0.4 with the username and password.',
     });
     expect((await asAdmin({ method: 'POST', url: '/api/admin/test/audiobookshelf' })).json().ok).toBe(true);
     expect((await asAdmin({ url: '/api/admin/abs/libraries' })).json()).toEqual([

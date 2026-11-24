@@ -22,6 +22,7 @@ export const EDITABLE_SETTINGS = [
   'QB_URL',
   'QB_USER',
   'QB_PASS',
+  'QB_API_KEY',
   'QB_CATEGORY',
   'QB_SAVE_PATH',
   'QB_PATH_FROM',
@@ -34,7 +35,7 @@ export const EDITABLE_SETTINGS = [
 
 export type SettingKey = (typeof EDITABLE_SETTINGS)[number];
 
-export const SECRET_SETTINGS: ReadonlySet<SettingKey> = new Set(['MAM_ID', 'QB_PASS', 'ABS_API_KEY', 'GOOGLE_BOOKS_API_KEY']);
+export const SECRET_SETTINGS: ReadonlySet<SettingKey> = new Set(['MAM_ID', 'QB_PASS', 'QB_API_KEY', 'ABS_API_KEY', 'GOOGLE_BOOKS_API_KEY']);
 
 /** Lectern-only options that have no environment variable. */
 export interface AppOptions {
@@ -57,10 +58,17 @@ export interface SettingView {
 
 export class SettingsError extends Error {}
 
-/** An address, and the secret that gets sent to it. */
+/** An address, and the secrets that get sent to it. */
 const ADDRESS_SECRETS = [
-  { address: 'QB_URL', secret: 'QB_PASS', service: 'qBittorrent', what: 'password' },
-  { address: 'ABS_URL', secret: 'ABS_API_KEY', service: 'Audiobookshelf', what: 'API key' },
+  {
+    address: 'QB_URL',
+    service: 'qBittorrent',
+    secrets: [
+      { key: 'QB_PASS', what: 'password' },
+      { key: 'QB_API_KEY', what: 'API key' },
+    ],
+  },
+  { address: 'ABS_URL', service: 'Audiobookshelf', secrets: [{ key: 'ABS_API_KEY', what: 'API key' }] },
 ] as const;
 
 const PREFIX = 'setting.';
@@ -116,11 +124,13 @@ export class Settings {
     for (const pair of ADDRESS_SECRETS) {
       const address = changes[pair.address];
       if (typeof address !== 'string' || current(next, pair.address) === current(before, pair.address)) continue;
-      const typedSecret = changes[pair.secret];
-      if (current(next, pair.secret) && !(typeof typedSecret === 'string' && typedSecret.trim())) {
-        throw new SettingsError(
-          `To change ${pair.service}’s address, type its ${pair.what} again too. That way a saved ${pair.what} is never sent to a new address by mistake.`,
-        );
+      for (const secret of pair.secrets) {
+        const typed = changes[secret.key];
+        if (current(next, secret.key) && !(typeof typed === 'string' && typed.trim())) {
+          throw new SettingsError(
+            `To change ${pair.service}’s address, type its ${secret.what} again too (or clear it). That way a saved ${secret.what} is never sent to a new address by mistake.`,
+          );
+        }
       }
     }
     try {

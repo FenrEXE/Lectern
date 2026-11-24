@@ -141,7 +141,7 @@ export function adminRoutes(app: FastifyInstance, deps: AdminDeps): void {
       case 'qbittorrent':
         try {
           const version = await deps.qb.version();
-          return { ok: true, message: `Signed in to qBittorrent ${version.trim()}.` };
+          return { ok: true, message: `Signed in to qBittorrent ${version.trim()} ${deps.qb.usesApiKey() ? 'with the API key' : 'with the username and password'}.` };
         } catch (err) {
           return { ok: false, message: (err as Error).message };
         }

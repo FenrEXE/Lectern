@@ -98,6 +98,9 @@ docker build -t lectern .
   ("Ok." vs an empty body).
 - Give separate errors for "wrong password", "can't reach qBittorrent" and
   "qBittorrent is up but the VPN isn't".
+- qBittorrent 5.2+ can use an API key (`QB_API_KEY`, sent as
+  `Authorization: Bearer`). When set, it replaces the username and password, so
+  a Web UI password change doesn't break Lectern. Older versions keep the login.
 
 ### Add to Library (packages/server/src/requests/service.ts)
 - A request goes sending → downloading → importing → done (or failed, with a

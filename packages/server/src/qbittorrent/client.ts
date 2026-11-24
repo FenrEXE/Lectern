@@ -4,6 +4,11 @@
 // with an empty body, so apps that look for "Ok." think it failed. Lectern
 // never trusts the wording. A login worked if qBittorrent gave us a session
 // cookie (SID) or if a test call succeeds right after.
+//
+// qBittorrent 5.2+ also offers an API key (Settings → WebUI → API Key). When
+// one is set, Lectern sends it with every request and never logs in, so
+// changing the Web UI password doesn't break Lectern. Older versions keep
+// using the username and password.
 import { USER_AGENT, type FetchFn } from '../http.js';
 
 export type QbErrorKind = 'not-configured' | 'unreachable' | 'bad-login' | 'banned' | 'error';
@@ -22,6 +27,8 @@ export interface QbSettings {
   url?: string;
   username?: string;
   password?: string;
+  /** qBittorrent 5.2+ API key. When set, the username and password aren't used. */
+  apiKey?: string;
 }
 
 /** The parts of a torrent's status Lectern uses. */
@@ -70,7 +77,7 @@ export class QbClient {
   /** Settings can change in the admin panel; a change means logging in again. */
   private get settings(): QbSettings {
     const s = typeof this.source === 'function' ? this.source() : this.source;
-    const key = JSON.stringify([s.url, s.username, s.password]);
+    const key = JSON.stringify([s.url, s.username, s.password, s.apiKey]);
     if (key !== this.sidFor) {
       this.sid = undefined;
       this.sidFor = key;
@@ -80,6 +87,11 @@ export class QbClient {
 
   isConfigured(): boolean {
     return !!this.settings.url;
+  }
+
+  /** True when Lectern signs in with an API key rather than a password. */
+  usesApiKey(): boolean {
+    return !!this.settings.apiKey;
   }
 
   /** The qBittorrent version, e.g. "v5.0.4". Also proves we're logged in. */
@@ -122,6 +134,20 @@ export class QbClient {
   /** Call the API, logging in first if needed, and once more if the session has expired. */
   private async call(path: string, init: RequestInit = {}, okStatuses: number[] = []): Promise<Response> {
     if (!this.settings.url) throw new QbError('not-configured', 'qBittorrent isn’t set up yet. Set QB_URL.');
+    if (this.settings.apiKey) {
+      // With a key there's no session: every request carries the key.
+      const res = await this.raw(path, init);
+      if (res.status === 401 || res.status === 403) {
+        throw new QbError(
+          'bad-login',
+          'qBittorrent didn’t accept the API key (QB_API_KEY). It needs qBittorrent 5.2 or newer, and making a new key cancels the old one.',
+        );
+      }
+      if (!res.ok && !okStatuses.includes(res.status)) {
+        throw new QbError('error', `qBittorrent answered ${res.status} to ${path.split('?')[0]}.`);
+      }
+      return res;
+    }
     if (!this.sid) await this.login();
     let res = await this.raw(path, init);
     if (res.status === 403) {
@@ -146,7 +172,11 @@ export class QbClient {
           // qBittorrent checks these to block cross-site requests.
           Referer: url,
           Origin: url,
-          ...(this.sid ? { Cookie: `SID=${this.sid}` } : {}),
+          ...(this.settings.apiKey
+            ? { Authorization: `Bearer ${this.settings.apiKey}` }
+            : this.sid
+              ? { Cookie: `SID=${this.sid}` }
+              : {}),
           ...(init.headers ?? {}),
         },
         signal: AbortSignal.timeout(15_000),

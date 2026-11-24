@@ -52,8 +52,13 @@ const groups: GroupDef[] = [
     title: 'qBittorrent',
     lead: 'Where Lectern sends downloads, and watches them finish.',
     fields: [
-      { key: 'QB_URL', label: 'Web UI address', placeholder: 'http://localhost:8080', hint: 'Changing it? Type the password again too.' },
-      { key: 'QB_USER', label: 'Username', hint: 'Leave both blank if qBittorrent skips sign-in for local addresses.' },
+      { key: 'QB_URL', label: 'Web UI address', placeholder: 'http://localhost:8080', hint: 'Changing it? Type the password or API key again too.' },
+      {
+        key: 'QB_API_KEY',
+        label: 'API key (qBittorrent 5.2+)',
+        hint: 'qBittorrent → Options → Web UI → API Key. When set, it’s used instead of the username and password, so changing the password won’t break Lectern.',
+      },
+      { key: 'QB_USER', label: 'Username', hint: 'For older versions, or without a key. Leave both blank if qBittorrent skips sign-in for local addresses.' },
       { key: 'QB_PASS', label: 'Password' },
       { key: 'QB_CATEGORY', label: 'Category for Lectern’s downloads', placeholder: 'lectern' },
       { key: 'QB_SAVE_PATH', label: 'Save downloads to', hint: 'As qBittorrent sees it. Blank uses qBittorrent’s default.' },
