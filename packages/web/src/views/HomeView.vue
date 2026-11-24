@@ -4,6 +4,7 @@ import { RouterLink, useRouter } from 'vue-router';
 import type { LibraryRequest, StatusResponse } from '@lectern/shared';
 import { api } from '../api';
 import BookTile from '../components/BookTile.vue';
+import MamStatsBar from '../components/MamStatsBar.vue';
 import { isAdmin, me } from '../session';
 
 const router = useRouter();
@@ -41,6 +42,8 @@ onMounted(async () => {
 </script>
 
 <template>
+  <MamStatsBar />
+
   <section class="hero">
     <h1>{{ greeting() }}, {{ me?.name }}</h1>
     <p class="tagline">Find a book, tap once, start listening.</p>

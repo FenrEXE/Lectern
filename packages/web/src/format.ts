@@ -41,3 +41,23 @@ export function initials(text: string): string {
     .map((w) => w[0]!.toUpperCase())
     .join('');
 }
+
+/** 1536 → "1.5 KiB", the way MAM shows sizes. */
+export function bytes(n: number): string {
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
+  return `${n >= 100 || i === 0 ? Math.round(n) : n.toFixed(1)} ${units[i]}`;
+}
+
+/** "just now", "12 min ago", "3 h ago". */
+export function ago(time: number, now = Date.now()): string {
+  const minutes = Math.round((now - time) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
+}

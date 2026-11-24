@@ -22,6 +22,8 @@ import { coverRoutes } from './routes/covers.js';
 import { healthRoutes } from './routes/health.js';
 import { requestRoutes } from './routes/requests.js';
 import { searchRoutes } from './routes/search.js';
+import { MamStatsService } from './mam/stats.js';
+import { mamStatsRoutes } from './routes/mamStats.js';
 import { Settings } from './settings.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -75,9 +77,18 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   browseRoutes(app, { db: opts.db, config, fetch: fetchFn });
   coverRoutes(app, { dataDir: config().dataDir, fetch: fetchFn });
   requestRoutes(app, requests);
+  const mamStats = new MamStatsService({ db: opts.db, mam, log: app.log });
+  mamStatsRoutes(app, mamStats);
 
-  if (opts.watchDownloads !== false) requests.start();
-  app.addHook('onClose', async () => requests.stop());
+  // Background jobs (off in tests): following downloads, and the hourly MAM account check.
+  if (opts.watchDownloads !== false) {
+    requests.start();
+    mamStats.start();
+  }
+  app.addHook('onClose', async () => {
+    requests.stop();
+    mamStats.stop();
+  });
 
   // Clear out expired cache entries and sign-in sessions hourly.
   const pruner = setInterval(() => {

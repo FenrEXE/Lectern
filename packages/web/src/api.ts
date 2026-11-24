@@ -4,6 +4,7 @@ import type {
   AvailabilityResponse,
   Book,
   LibraryRequest,
+  MamStatsResponse,
   MamTorrent,
   MediaKind,
   MeResponse,
@@ -101,6 +102,8 @@ export const api = {
     put<Profile>('/api/me', changes),
 
   status: () => request<StatusResponse>('/api/status'),
+  mamStats: () => request<MamStatsResponse>('/api/mam/stats'),
+  refreshMamStats: () => post<MamStatsResponse>('/api/mam/stats/refresh'),
 
   // ── Finding books ──
   suggest: (q: string, kind: MediaKind, signal?: AbortSignal) =>

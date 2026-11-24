@@ -13,10 +13,12 @@ import { cacheGet, cacheSet, MINUTE } from '../cache.js';
 import { readConfig, type ConfigSource } from '../config.js';
 import { getSetting, setSetting, type Db } from '../db.js';
 import { USER_AGENT, type FetchFn } from '../http.js';
-import { MamError, parseSearchResponse, type ParsedTorrent } from './parse.js';
+import { MamError, parseAccountStats, parseSearchResponse, type ParsedTorrent } from './parse.js';
 
 const SEARCH_URL = 'https://www.myanonamouse.net/tor/js/loadSearchJSONbasic.php';
 const DOWNLOAD_URL = 'https://www.myanonamouse.net/tor/download.php';
+// Your own account summary (ratio, unsatisfied torrents). Asked at most hourly.
+const ACCOUNT_URL = 'https://www.myanonamouse.net/jsonLoad.php?snatch_summary';
 const MIN_GAP_MS = 2_000;
 const CACHE_TTL = 15 * MINUTE;
 const TIMEOUT_MS = 20_000;
@@ -205,6 +207,29 @@ export class MamClient {
       }
       this.keepFreshCookie(res, cookie);
       return data;
+    });
+  }
+
+  /** Your account's ratio and unsatisfied count. Queued like every MAM request. */
+  async accountStats(): Promise<ReturnType<typeof parseAccountStats>> {
+    return this.enqueue(async () => {
+      const cookie = this.ready();
+      const res = await this.send(ACCOUNT_URL, cookie, { headers: { Accept: 'application/json' } });
+      if (res.status === 401 || res.status === 403) {
+        throw new MamError('session-expired', 'MAM rejected the session. Paste a fresh mam_id.');
+      }
+      const text = await res.text();
+      if (!res.ok) throw new MamError('error', `MAM answered ${res.status}.`);
+      let json: unknown;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        if (/log ?in/i.test(text)) throw new MamError('session-expired', 'MAM asked to log in. Paste a fresh mam_id.');
+        throw new MamError('error', 'MAM sent something that isn’t account details.');
+      }
+      const stats = parseAccountStats(json);
+      this.keepFreshCookie(res, cookie);
+      return stats;
     });
   }
 }

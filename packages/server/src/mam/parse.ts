@@ -140,3 +140,32 @@ export function parseSearchResponse(json: unknown): ParsedTorrent[] {
   if (!Array.isArray(json.data)) return [];
   return json.data.map(parseTorrent).filter((t): t is ParsedTorrent => !!t);
 }
+
+/**
+ * Read the account summary from MAM's jsonLoad.php. Byte counts are used
+ * (the "ratio" and "uploaded" fields are formatted for display). "unsat" has
+ * moved under "snatch_summary" before, so both places are checked.
+ */
+export function parseAccountStats(json: unknown): { ratio: number | null; uploadedBytes: number; downloadedBytes: number; unsat: { count: number; limit: number } | null } {
+  if (!isObj(json)) throw new MamError('error', 'MAM sent something that isn’t account details.');
+  if (typeof json.error === 'string') throw new MamError('error', `MAM: ${json.error}`);
+  const num = (v: unknown): number | undefined => {
+    const n = typeof v === 'string' ? Number(v) : v;
+    return typeof n === 'number' && Number.isFinite(n) ? n : undefined;
+  };
+  const uploadedBytes = num(json.uploaded_bytes);
+  const downloadedBytes = num(json.downloaded_bytes);
+  if (uploadedBytes === undefined || downloadedBytes === undefined) {
+    throw new MamError('error', 'MAM’s account details didn’t include upload and download totals.');
+  }
+  const summary = isObj(json.snatch_summary) ? json.snatch_summary : {};
+  const unsatRaw = isObj(summary.unsat) ? summary.unsat : isObj(json.unsat) ? json.unsat : undefined;
+  const count = num(unsatRaw?.count);
+  const limit = num(unsatRaw?.limit);
+  return {
+    ratio: downloadedBytes > 0 ? uploadedBytes / downloadedBytes : null,
+    uploadedBytes,
+    downloadedBytes,
+    unsat: count !== undefined && limit !== undefined ? { count, limit } : null,
+  };
+}

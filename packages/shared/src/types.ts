@@ -220,3 +220,26 @@ export interface StatusResponse {
   /** Whether "Add to Library" is set up for each kind of book, for this profile. */
   canAdd: Record<MediaKind, boolean>;
 }
+
+/** The MAM account's standing, as last checked (GET /api/mam/stats). */
+export interface MamStats {
+  /** Uploaded ÷ downloaded. null when nothing has been downloaded yet. */
+  ratio: number | null;
+  uploadedBytes: number;
+  downloadedBytes: number;
+  /**
+   * Unsatisfied torrents: downloaded but not yet seeded long enough (72 hours).
+   * MAM won't allow more downloads once `count` reaches `limit`.
+   */
+  unsat: { count: number; limit: number } | null;
+  /** When MAM was last asked (ms since 1970). */
+  checkedAt: number;
+}
+
+export interface MamStatsResponse {
+  stats: MamStats | null;
+  /** Why the last check failed, if it did. The stats shown are then older. */
+  problem?: string;
+  /** The earliest time "Refresh" may ask MAM again (ms since 1970). */
+  refreshAllowedAt: number;
+}

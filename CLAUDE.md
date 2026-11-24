@@ -72,8 +72,13 @@ docker build -t lectern .
   through one queue at least 2 seconds apart, and results are cached for 15
   minutes.
 - **MAM only allows automating what's on its API page.** Lectern uses exactly
-  two of those: *Torrent Search (JSON)* and *Download Torrent*. Anything else
-  (and anything that "impacts the site negatively") can cost the account.
+  three of those: *Torrent Search (JSON)*, *Download Torrent* and the user
+  summary `GET /jsonLoad.php?snatch_summary` (ratio and unsatisfied count).
+  Anything else (and anything that "impacts the site negatively") can cost the
+  account.
+- Account stats (`mam/stats.ts`): asked hourly in the background, and by a
+  Refresh button at most every 5 minutes for the whole server. Pages only read
+  the saved copy, never MAM. Ratio is worked out from the byte counts.
 - Search: `POST /tor/js/loadSearchJSONbasic.php` with a JSON `tor` body
   (confirmed against MAM's API docs). `main_cat`: 13 = AudioBooks,
   14 = E-Books. `srchIn` accepts title, author, narrator, series (and others).
