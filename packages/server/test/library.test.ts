@@ -12,6 +12,7 @@ import { absMetadata, bookFolders, chooseFiles, importBook, safeName } from '../
 import { MamClient } from '../src/mam/client.js';
 import { QbClient } from '../src/qbittorrent/client.js';
 import { RequestService } from '../src/requests/service.js';
+import { UserStore } from '../src/auth/users.js';
 import { torrentInfoHash } from '../src/torrent/torrentFile.js';
 import { fakeFetch, json } from './fixtures.js';
 
@@ -244,6 +245,29 @@ describe('Add to Library, start to finish', () => {
     service.retry(created.id);
     await until(() => service.get(created.id)?.status === 'downloading');
     expect(service.get(created.id)?.status).toBe('downloading');
+  });
+
+  it('names the qBittorrent category after the profile, with -Ebook for ebooks', async () => {
+    const db = openMemoryDb();
+    const users = new UserStore(db);
+    const sam = await users.create({ name: 'Sam', password: 'long-enough', role: 'admin' });
+    const odd = await users.create({ name: 'A/B', password: 'long-enough', role: 'member' });
+    const config = loadConfig({ DATA_DIR: tmp('d'), QB_CATEGORY: 'lectern' });
+    const fetchFn = fakeFetch([]);
+    const service = new RequestService({
+      db,
+      config,
+      fetch: fetchFn,
+      users,
+      mam: new MamClient({ db, config, fetch: fetchFn, sleep: async () => {}, interfaceNames: () => ['wg0'] }),
+      qb: new QbClient(config.qbittorrent, fetchFn),
+      abs: new AbsClient(config.audiobookshelf, fetchFn),
+      sleep: async () => {},
+    });
+    expect(service.categoryFor(sam.id, 'audiobook')).toBe('Sam');
+    expect(service.categoryFor(sam.id, 'ebook')).toBe('Sam-Ebook');
+    expect(service.categoryFor(odd.id, 'audiobook')).toBe('A-B'); // "/" would make a subcategory
+    expect(service.categoryFor(null, 'audiobook')).toBe('lectern');
   });
 
   it('refuses when no library folder is set for that kind', async () => {

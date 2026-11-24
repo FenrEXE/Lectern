@@ -110,6 +110,9 @@ docker build -t lectern .
   torrent up, never by qBittorrent's reply text.
 - A watcher checks qBittorrent every 10 seconds. It only talks to qBittorrent,
   never MAM.
+- qBittorrent category per profile: the profile's name for audiobooks
+  (`Sam`), `Sam-Ebook` for ebooks. `QB_CATEGORY` is only the fallback for
+  requests without a profile.
 - Importing never overwrites: if the book's folder already has files, it's
   marked done with "Already in your library".
 

@@ -60,7 +60,12 @@ const groups: GroupDef[] = [
       },
       { key: 'QB_USER', label: 'Username', hint: 'For older versions, or without a key. Leave both blank if qBittorrent skips sign-in for local addresses.' },
       { key: 'QB_PASS', label: 'Password' },
-      { key: 'QB_CATEGORY', label: 'Category for Lectern’s downloads', placeholder: 'lectern' },
+      {
+        key: 'QB_CATEGORY',
+        label: 'Fallback category',
+        placeholder: 'lectern',
+        hint: 'Each profile’s downloads get their own category: their name for audiobooks (“Sam”) and name-Ebook for ebooks (“Sam-Ebook”). This one is only for downloads without a profile.',
+      },
       { key: 'QB_SAVE_PATH', label: 'Save downloads to', hint: 'As qBittorrent sees it. Blank uses qBittorrent’s default.' },
       {
         key: 'QB_PATH_FROM',

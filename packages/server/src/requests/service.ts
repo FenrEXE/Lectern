@@ -105,6 +105,20 @@ export class RequestService {
     return { dir: this.config.libraries[kind], absLibraryId: this.config.audiobookshelf.libraryIds[kind] };
   }
 
+  /**
+   * The qBittorrent category for a request, so each person's downloads are easy
+   * to tell apart in qBittorrent: the profile's name for audiobooks ("Fenr"),
+   * and the name plus "-Ebook" for ebooks ("Fenr-Ebook"). Requests without a
+   * profile use QB_CATEGORY.
+   */
+  categoryFor(userId: number | null | undefined, kind: MediaKind): string {
+    const name = userId != null ? this.o.users?.get(userId)?.name : undefined;
+    // "/" makes a subcategory in qBittorrent and "\\" isn't allowed, so swap them out.
+    const base = name?.replace(/[\\/]+/g, '-').trim();
+    if (!base) return this.config.qbittorrent.category;
+    return kind === 'ebook' ? `${base}-Ebook` : base;
+  }
+
   /** Whether "Add to Library" is set up for this kind of book (for this profile). */
   canAdd(kind: MediaKind, user?: Profile | null): boolean {
     return this.o.mam.isConfigured() && this.o.qb.isConfigured() && !!this.libraryFor(user?.id, kind).dir;
@@ -207,7 +221,8 @@ export class RequestService {
     try {
       const file = await this.o.mam.downloadTorrent(req.torrentId);
       const hash = torrentInfoHash(file);
-      const { category, savePath } = this.config.qbittorrent;
+      const { savePath } = this.config.qbittorrent;
+      const category = this.categoryFor(req.userId, req.kind);
       await this.o.qb.ensureCategory(category, savePath);
       await this.o.qb.addTorrent(file, { category, savePath, tags: 'lectern' });
 
