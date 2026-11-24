@@ -120,10 +120,8 @@ docker build -t lectern .
   - saves the cover;
   - tells Audiobookshelf the exact match (an ASIN for audio, an ISBN for
     ebooks), then triggers a scan.
-- `IMPORT_MODE` (Settings → Connections → qBittorrent) picks how files go in:
-  `hardlink` (default; no extra space, copies instead across drives) or `copy`
-  (always a separate copy). Never move the download: MAM expects seeding, and
-  qBittorrent would lose its files.
+- Use hardlinks when downloads and libraries share a drive, so seeding keeps
+  working and no space is wasted.
 
 ### Profiles, sign-in and settings
 - Every `/api` route needs a signed-in profile except health, sign-in and
