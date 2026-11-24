@@ -37,6 +37,15 @@ const schema = z.object({
   ABS_API_KEY: optional,
   ABS_AUDIOBOOKS_LIBRARY_ID: optional,
   ABS_EBOOKS_LIBRARY_ID: optional,
+  // How finished downloads go into the library: "hardlink" (no extra space,
+  // falls back to copying across drives) or "copy" (always a separate copy).
+  IMPORT_MODE: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .transform((v) => v || 'hardlink')
+    .pipe(z.enum(['hardlink', 'copy']))
+    .default('hardlink'),
   AUDIBLE_REGION: z
     .string()
     .trim()
@@ -83,6 +92,11 @@ export interface Config {
   /** The folders books are filed into, per kind. Unset = "Add" is off for that kind. */
   libraries: { audiobook?: string; ebook?: string };
   audiobookshelf: { url?: string; apiKey?: string; libraryIds: { audiobook?: string; ebook?: string } };
+  /**
+   * How finished downloads are placed in the library. Both keep the download
+   * where it is, so qBittorrent keeps seeding.
+   */
+  importMode: 'hardlink' | 'copy';
   audibleRegion: string;
   googleBooksApiKey?: string;
 }
@@ -131,6 +145,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       apiKey: e.ABS_API_KEY,
       libraryIds: { audiobook: e.ABS_AUDIOBOOKS_LIBRARY_ID, ebook: e.ABS_EBOOKS_LIBRARY_ID },
     },
+    importMode: e.IMPORT_MODE,
     audibleRegion: e.AUDIBLE_REGION,
     googleBooksApiKey: e.GOOGLE_BOOKS_API_KEY,
   };

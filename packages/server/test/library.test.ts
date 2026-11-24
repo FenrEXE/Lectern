@@ -149,6 +149,21 @@ describe('library importer', () => {
     const again = await importBook({ fetch: fetchFn, library, book: finalEmpire, files });
     expect(again.alreadyThere).toBe(true);
   });
+
+  it('copies instead of linking when the import mode is "copy"', async () => {
+    const downloads = tmp('dl');
+    const library = tmp('lib');
+    fs.mkdirSync(path.join(downloads, 'TFE'));
+    fs.writeFileSync(path.join(downloads, 'TFE', 'book.m4b'), 'audio');
+    const files = chooseFiles('audiobook', downloads, ['TFE/book.m4b']);
+    const result = await importBook({ fetch: fakeFetch([]), library, book: { ...finalEmpire, coverUrl: undefined }, files, mode: 'copy' });
+    expect(result).toMatchObject({ linked: 0, copied: 1 });
+    const dir = path.join(library, 'Brandon Sanderson', 'Mistborn', 'Book 1 - The Final Empire');
+    // A separate file with the same content, and the download is still there for seeding.
+    expect(fs.statSync(path.join(dir, 'book.m4b')).ino).not.toBe(fs.statSync(path.join(downloads, 'TFE', 'book.m4b')).ino);
+    expect(fs.readFileSync(path.join(dir, 'book.m4b'), 'utf8')).toBe('audio');
+    expect(fs.existsSync(path.join(downloads, 'TFE', 'book.m4b'))).toBe(true);
+  });
 });
 
 describe('Add to Library, start to finish', () => {

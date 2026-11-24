@@ -30,6 +30,7 @@ export const EDITABLE_SETTINGS = [
   'ABS_URL',
   'ABS_API_KEY',
   'GOOGLE_BOOKS_API_KEY',
+  'IMPORT_MODE',
   'AUDIBLE_REGION',
 ] as const;
 

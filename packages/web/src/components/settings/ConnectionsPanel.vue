@@ -60,6 +60,15 @@ const groups: GroupDef[] = [
       },
       { key: 'QB_USER', label: 'Username', hint: 'For older versions, or without a key. Leave both blank if qBittorrent skips sign-in for local addresses.' },
       { key: 'QB_PASS', label: 'Password' },
+      {
+        key: 'IMPORT_MODE',
+        label: 'Putting finished books in the library',
+        options: [
+          { value: 'hardlink', label: 'Hardlink (recommended): no extra space' },
+          { value: 'copy', label: 'Copy: a separate copy, uses double the space' },
+        ],
+        hint: 'Either way the download stays where it is, so qBittorrent keeps seeding. Hardlinks need the downloads and libraries on the same drive; if they aren’t, Lectern copies instead.',
+      },
       { key: 'QB_CATEGORY', label: 'Category for Lectern’s downloads', placeholder: 'lectern' },
       { key: 'QB_SAVE_PATH', label: 'Save downloads to', hint: 'As qBittorrent sees it. Blank uses qBittorrent’s default.' },
       {

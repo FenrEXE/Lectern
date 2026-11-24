@@ -274,9 +274,11 @@ export class RequestService {
         throw new RequestError(`The download has no ${req.kind === 'ebook' ? 'ebook' : 'audio'} files Lectern recognises.`);
       }
 
-      const result = await importBook({ fetch: this.o.fetch, library, book: req.book, files });
+      const mode = this.config.importMode;
+      const result = await importBook({ fetch: this.o.fetch, library, book: req.book, files, mode });
       let message: string | null = result.alreadyThere ? 'Already in your library, so nothing was changed.' : null;
-      if (!result.alreadyThere && result.copied > 0) {
+      // Only worth mentioning when hardlinks were wanted but didn't work.
+      if (!result.alreadyThere && mode === 'hardlink' && result.copied > 0) {
         message = 'Copied rather than linked (the download and library are on different drives), so it uses extra space.';
       }
 

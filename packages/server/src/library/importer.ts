@@ -5,8 +5,12 @@
 //       metadata.json                   title, series, number, ASIN/ISBN...
 //       cover.jpg
 //
-// Hardlinks take no extra space and need the download and the library on the
-// same drive. If they aren't, the files are copied instead.
+// Two ways to place the files (IMPORT_MODE), both leaving the download where
+// it is so qBittorrent keeps seeding (MAM expects that):
+//  - hardlink (default): no extra space. Needs the download and the library on
+//    the same drive; if they aren't, the files are copied instead.
+//  - copy: always a separate copy. Uses double the space, but the library copy
+//    is independent, e.g. for tools that edit tags in place.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Book, MediaKind } from '@lectern/shared';
@@ -70,8 +74,14 @@ export function chooseFiles(kind: MediaKind, saveDir: string, names: string[]): 
   });
 }
 
-/** Hardlink a file; copy it if a link isn't possible (different drives). */
-async function linkOrCopy(source: string, target: string): Promise<'linked' | 'copied'> {
+export type ImportMode = 'hardlink' | 'copy';
+
+/** Hardlink a file (copying if a link isn't possible), or always copy. */
+async function placeFile(source: string, target: string, mode: ImportMode): Promise<'linked' | 'copied'> {
+  if (mode === 'copy') {
+    await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL);
+    return 'copied';
+  }
   try {
     await fs.link(source, target);
     return 'linked';
@@ -122,6 +132,8 @@ export async function importBook(opts: {
   library: string;
   book: Book;
   files: FileToImport[];
+  /** Default: hardlink. */
+  mode?: ImportMode;
 }): Promise<ImportResult> {
   const folders = bookFolders(opts.book);
   const library = path.resolve(opts.library);
@@ -140,7 +152,7 @@ export async function importBook(opts: {
   for (const file of opts.files) {
     const dest = path.join(target, file.relative);
     await fs.mkdir(path.dirname(dest), { recursive: true });
-    if ((await linkOrCopy(file.source, dest)) === 'linked') linked++;
+    if ((await placeFile(file.source, dest, opts.mode ?? 'hardlink')) === 'linked') linked++;
     else copied++;
   }
 
