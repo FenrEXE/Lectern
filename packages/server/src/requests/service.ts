@@ -81,6 +81,15 @@ export interface RequestServiceOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
+/**
+ * Tags for a download in qBittorrent, matching what other MAM tools use:
+ * the kind, "MAM", the torrent's MAM ID (mamid=123456, handy for finding it on
+ * MAM again), and "lectern" so you can see which app added it.
+ */
+export function qbTags(kind: MediaKind, torrentId: string): string[] {
+  return [kind, 'MAM', `mamid=${torrentId}`, 'lectern'];
+}
+
 export class RequestService {
   private timer?: NodeJS.Timeout;
   private watching = false;
@@ -224,7 +233,7 @@ export class RequestService {
       const { savePath } = this.config.qbittorrent;
       const category = this.categoryFor(req.userId, req.kind);
       await this.o.qb.ensureCategory(category, savePath);
-      await this.o.qb.addTorrent(file, { category, savePath, tags: 'lectern' });
+      await this.o.qb.addTorrent(file, { category, savePath, tags: qbTags(req.kind, req.torrentId).join(',') });
 
       // Don't trust qBittorrent's reply text; check the torrent is really there.
       let found = await this.o.qb.torrent(hash);

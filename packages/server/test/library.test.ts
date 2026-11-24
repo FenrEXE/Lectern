@@ -11,7 +11,7 @@ import { openMemoryDb } from '../src/db.js';
 import { absMetadata, bookFolders, chooseFiles, importBook, safeName } from '../src/library/importer.js';
 import { MamClient } from '../src/mam/client.js';
 import { QbClient } from '../src/qbittorrent/client.js';
-import { RequestService } from '../src/requests/service.js';
+import { qbTags, RequestService } from '../src/requests/service.js';
 import { UserStore } from '../src/auth/users.js';
 import { torrentInfoHash } from '../src/torrent/torrentFile.js';
 import { fakeFetch, json } from './fixtures.js';
@@ -245,6 +245,11 @@ describe('Add to Library, start to finish', () => {
     service.retry(created.id);
     await until(() => service.get(created.id)?.status === 'downloading');
     expect(service.get(created.id)?.status).toBe('downloading');
+  });
+
+  it('tags downloads like other MAM tools do, with the torrent’s MAM ID', () => {
+    expect(qbTags('audiobook', '1002395')).toEqual(['audiobook', 'MAM', 'mamid=1002395', 'lectern']);
+    expect(qbTags('ebook', '1282917')).toEqual(['ebook', 'MAM', 'mamid=1282917', 'lectern']);
   });
 
   it('names the qBittorrent category after the profile, with -Ebook for ebooks', async () => {

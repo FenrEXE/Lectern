@@ -110,6 +110,8 @@ docker build -t lectern .
   torrent up, never by qBittorrent's reply text.
 - A watcher checks qBittorrent every 10 seconds. It only talks to qBittorrent,
   never MAM.
+- qBittorrent tags: `audiobook`/`ebook`, `MAM`, `mamid=<torrent id>`, `lectern`
+  (matching the other MAM tools on the box).
 - qBittorrent category per profile: the profile's name for audiobooks
   (`Sam`), `Sam-Ebook` for ebooks. `QB_CATEGORY` is only the fallback for
   requests without a profile.
