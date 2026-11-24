@@ -153,8 +153,10 @@ export function parseAccountStats(json: unknown): { ratio: number | null; upload
     const n = typeof v === 'string' ? Number(v) : v;
     return typeof n === 'number' && Number.isFinite(n) ? n : undefined;
   };
-  const uploadedBytes = num(json.uploaded_bytes);
-  const downloadedBytes = num(json.downloaded_bytes);
+  // MAM's API page documents only the formatted values ("5.125 TiB"); the
+  // exact *_bytes counts are also sent today. Prefer exact, fall back to formatted.
+  const uploadedBytes = num(json.uploaded_bytes) ?? sizeToBytes(json.uploaded);
+  const downloadedBytes = num(json.downloaded_bytes) ?? sizeToBytes(json.downloaded);
   if (uploadedBytes === undefined || downloadedBytes === undefined) {
     throw new MamError('error', 'MAM’s account details didn’t include upload and download totals.');
   }
@@ -163,9 +165,19 @@ export function parseAccountStats(json: unknown): { ratio: number | null; upload
   const count = num(unsatRaw?.count);
   const limit = num(unsatRaw?.limit);
   return {
-    ratio: downloadedBytes > 0 ? uploadedBytes / downloadedBytes : null,
+    ratio: downloadedBytes > 0 ? uploadedBytes / downloadedBytes : (num(json.ratio) ?? null),
     uploadedBytes,
     downloadedBytes,
     unsat: count !== undefined && limit !== undefined ? { count, limit } : null,
   };
+}
+
+/** "5.125 TiB" → bytes. MAM uses binary units (KiB, MiB...). */
+function sizeToBytes(value: unknown): number | undefined {
+  if (typeof value !== 'string') return undefined;
+  const m = /^([\d.,]+)\s*([KMGTPE]?)i?B$/i.exec(value.trim());
+  if (!m) return undefined;
+  const n = Number(m[1]!.replace(/,/g, ''));
+  const power = ' KMGTPE'.indexOf((m[2] || ' ').toUpperCase());
+  return Number.isFinite(n) && power >= 0 ? Math.round(n * 1024 ** power) : undefined;
 }

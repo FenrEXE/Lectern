@@ -27,6 +27,9 @@ describe('MAM account stats', () => {
       downloadedBytes: 0,
       unsat: { count: 3, limit: 50 },
     });
+    // Only the documented, formatted fields: still works.
+    const formatted = parseAccountStats({ uploaded: '2 GiB', downloaded: '1,024 MiB', ratio: '2' });
+    expect(formatted).toMatchObject({ uploadedBytes: 2 * 1024 ** 3, downloadedBytes: 1024 ** 3, ratio: 2, unsat: null });
     expect(() => parseAccountStats({ error: 'Not logged in' })).toThrow(/Not logged in/);
   });
 
