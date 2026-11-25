@@ -20,7 +20,15 @@ const DOWNLOAD_URL = 'https://www.myanonamouse.net/tor/download.php';
 // Your own account summary (ratio, unsatisfied torrents). Asked at most hourly.
 const ACCOUNT_URL = 'https://www.myanonamouse.net/jsonLoad.php?snatch_summary';
 const MIN_GAP_MS = 2_000;
-const CACHE_TTL = 15 * MINUTE;
+// Search answers are kept for a few hours and shared by every profile, so the
+// same search costs MAM nothing the second time.
+const CACHE_TTL = 3 * 60 * MINUTE;
+/**
+ * At most this many searches reach MAM per day (cached answers don't count).
+ * A safety net against loops or someone hammering the button; normal use is
+ * far below it.
+ */
+export const DAILY_SEARCH_LIMIT = 150;
 const TIMEOUT_MS = 20_000;
 
 // MAM's main categories. 13 = AudioBooks, 14 = E-Books.
@@ -84,9 +92,31 @@ export class MamClient {
     const key = `mam:search:${kind}:${normalizeText(text)}`;
     const hit = cacheGet<ParsedTorrent[]>(this.opts.db, key, this.now());
     if (hit) return hit;
+    this.countSearch();
     const results = await this.enqueue(() => this.request(text, kind));
     cacheSet(this.opts.db, key, results, CACHE_TTL, this.now());
     return results;
+  }
+
+  /** Searches sent to MAM today (UTC). */
+  searchesToday(): number {
+    return Number(getSetting(this.opts.db, `mam.searches.${this.today()}`) ?? 0);
+  }
+
+  private today(): string {
+    return new Date(this.now()).toISOString().slice(0, 10);
+  }
+
+  /** Count one search against today's limit, or refuse if it's used up. */
+  private countSearch(): void {
+    const used = this.searchesToday();
+    if (used >= DAILY_SEARCH_LIMIT) {
+      throw new MamError(
+        'daily-limit',
+        `Lectern has searched MAM ${DAILY_SEARCH_LIMIT} times today, its daily limit. Searches you've already done still work; new ones can wait until tomorrow (UTC).`,
+      );
+    }
+    setSetting(this.opts.db, `mam.searches.${this.today()}`, String(used + 1));
   }
 
   /** Run `task` after every earlier request, keeping MIN_GAP_MS between requests. */
@@ -146,7 +176,8 @@ export class MamClient {
         startNumber: '0',
         main_cat: [MAIN_CATEGORY[kind]],
       },
-      perpage: 50,
+      // One search should find everything relevant, so ask for a full page.
+      perpage: 100,
       // Ask for ISBNs (often blank, but a perfect match when present).
       isbn: 'true',
     };

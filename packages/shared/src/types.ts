@@ -124,6 +124,7 @@ export type AvailabilityStatus =
   | 'not-configured'
   | 'session-expired'
   | 'vpn-down'
+  | 'daily-limit'
   | 'error';
 
 /** What POST /api/availability returns. */
@@ -252,3 +253,46 @@ export interface MamStatsResponse {
   /** The earliest time "Refresh" may ask MAM again (ms since 1970). */
   refreshAllowedAt: number;
 }
+
+/**
+ * One book found on MAM: every torrent of it (different formats or uploads)
+ * grouped together, best first. What MAM says about the book (title, authors,
+ * series) comes from the best torrent.
+ */
+export interface FoundBook extends Book {
+  /** Stable within one search, e.g. "mam:1214223" (the best torrent's id). */
+  id: string;
+  /** A pack of several books rather than one. */
+  pack: boolean;
+  torrents: MamTorrent[];
+}
+
+/** What GET /api/search returns. One MAM request (or none, when cached). */
+export interface SearchResponse {
+  query: string;
+  kind: MediaKind;
+  status: AvailabilityStatus;
+  /** Human-readable explanation when status isn't "ok". */
+  message?: string;
+  /** Books whose title, author or series matches what was typed. */
+  books: FoundBook[];
+  /** Matched only through the narrator or other fields; shown on request. */
+  others: FoundBook[];
+  /** How many torrents were hidden for being in another language. */
+  hiddenLanguages: number;
+  /** When MAM found nothing: a likely spelling, from Audible or Google. Not searched until tapped. */
+  didYouMean?: string;
+}
+
+/** Extra details for a found book, from Audible, Google Books or Open Library (never MAM). */
+export type BookDetails = Pick<
+  Book,
+  'subtitle' | 'description' | 'asin' | 'isbn' | 'publishedYear' | 'durationMinutes' | 'coverUrl' | 'narrators' | 'series' | 'authorIds'
+>;
+
+/** POST /api/books/details: the books on screen, by id. */
+export interface DetailsRequest {
+  kind: MediaKind;
+  books: Array<{ id: string; title: string; author?: string }>;
+}
+export type DetailsResponse = Record<string, BookDetails>;

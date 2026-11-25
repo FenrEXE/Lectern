@@ -1,9 +1,24 @@
 <script setup lang="ts">
-import type { BookSuggestion, MediaKind } from '@lectern/shared';
+import type { Book, MamTorrent, MediaKind } from '@lectern/shared';
 import { duration, joinNames, seriesLabel } from '../format';
 import BookCover from './BookCover.vue';
 
-defineProps<{ book: BookSuggestion; kind: MediaKind }>();
+// One book in a list. From a MAM search, `torrent` is its best version and
+// `versions` how many there are; those show as a line of MAM details.
+const props = defineProps<{ book: Book; kind: MediaKind; torrent?: MamTorrent; versions?: number; pack?: boolean }>();
+
+function mamLine(): string {
+  const t = props.torrent;
+  if (!t) return '';
+  return [
+    t.formats.map((f) => f.toUpperCase()).join('/'),
+    t.size,
+    `${t.seeders} seeding`,
+    props.versions && props.versions > 1 ? `${props.versions} versions` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
 defineEmits<{ open: [] }>();
 </script>
 
@@ -24,6 +39,12 @@ defineEmits<{ open: [] }>();
       </span>
       <span class="row__meta row__small">
         {{ [book.publishedYear, kind === 'audiobook' ? duration(book.durationMinutes) : undefined].filter(Boolean).join(' · ') }}
+      </span>
+      <span v-if="torrent" class="row__mam">
+        {{ mamLine() }}
+        <span v-if="pack" class="row__badge">Pack</span>
+        <span v-if="torrent.freeleech" class="row__badge">Freeleech</span>
+        <span v-if="torrent.snatched" class="row__badge row__badge--quiet">Downloaded before</span>
       </span>
     </span>
   </button>
@@ -76,5 +97,26 @@ defineEmits<{ open: [] }>();
 
 @media (prefers-color-scheme: dark) {
   .row__series { color: #8fbf9f; }
+}
+.row__mam {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.row__badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.row__badge--quiet {
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
 }
 </style>

@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import type { BookSuggestion, MediaKind, SuggestResponse } from '@lectern/shared';
+import type { BookDetails, FoundBook, MediaKind, SearchResponse } from '@lectern/shared';
 import { api } from '../api';
 import BookRow from '../components/BookRow.vue';
 import BookSheet from '../components/BookSheet.vue';
 import { defaultKind } from '../session';
 
+// Search MAM first: pressing Search sends one MAM request (none if someone
+// searched the same thing recently), and only books MAM has are listed.
+// Covers and descriptions are then filled in from Audible, Google Books and
+// Open Library, never MAM.
+//
 // The search lives in the address (?q=...&kind=...), so results survive a
 // refresh and the back button works as expected.
 const route = useRoute();
@@ -18,22 +23,55 @@ const kind = computed<MediaKind>(() =>
 );
 
 const typed = ref(q.value);
-const result = ref<SuggestResponse>();
+const result = ref<SearchResponse>();
+const details = ref<Record<string, BookDetails>>({});
 const loading = ref(false);
 const error = ref<string>();
-const open = ref<BookSuggestion>();
+const open = ref<FoundBook>();
+const showOthers = ref(false);
 
 let inFlight: AbortController | undefined;
+
+/** A found book with whatever details have arrived. MAM's own facts win. */
+const withDetails = (b: FoundBook): FoundBook => {
+  const d = details.value[b.id];
+  if (!d) return b;
+  return {
+    ...d,
+    ...b,
+    narrators: b.narrators?.length ? b.narrators : d.narrators,
+    series: b.series ?? d.series,
+    isbn: b.isbn ?? d.isbn,
+  };
+};
+
+const books = computed(() => (result.value?.books ?? []).map(withDetails));
+const others = computed(() => (result.value?.others ?? []).map(withDetails));
+
+async function loadDetails(list: FoundBook[]): Promise<void> {
+  const wanted = list
+    .filter((b) => !details.value[b.id])
+    .slice(0, 30)
+    .map((b) => ({ id: b.id, title: b.title, author: b.authors[0] }));
+  if (!wanted.length) return;
+  try {
+    details.value = { ...details.value, ...(await api.details(kind.value, wanted)) };
+  } catch {
+    // Covers are a nice-to-have; the list works without them.
+  }
+}
 
 async function load(): Promise<void> {
   inFlight?.abort();
   result.value = undefined;
   error.value = undefined;
+  showOthers.value = false;
   if (q.value.trim().length < 2) return;
   const controller = (inFlight = new AbortController());
   loading.value = true;
   try {
-    result.value = await api.suggest(q.value, kind.value, controller.signal);
+    result.value = await api.search(q.value, kind.value, controller.signal);
+    void loadDetails(result.value.books);
   } catch (err) {
     if (!controller.signal.aborted) error.value = (err as Error).message;
   } finally {
@@ -46,6 +84,10 @@ watch([q, kind], () => {
   void load();
 }, { immediate: true });
 
+watch(showOthers, (shown) => {
+  if (shown && result.value) void loadDetails(result.value.others);
+});
+
 function submit(): void {
   const text = typed.value.trim();
   if (text) void router.push({ query: { q: text, kind: kind.value } });
@@ -54,13 +96,11 @@ function submit(): void {
 function setKind(k: MediaKind): void {
   void router.replace({ query: { ...route.query, kind: k } });
 }
-
-const sourceNames = { audible: 'Audible', google: 'Google Books', openlibrary: 'Open Library' } as const;
 </script>
 
 <template>
   <form class="search" role="search" @submit.prevent="submit">
-    <label for="search-box" class="visually-hidden">Search books</label>
+    <label for="search-box" class="visually-hidden">Search MAM</label>
     <input
       id="search-box"
       v-model="typed"
@@ -85,7 +125,7 @@ const sourceNames = { audible: 'Audible', google: 'Google Books', openlibrary: '
     </button>
   </div>
 
-  <p v-if="!q" class="hint">Type an author, title or series. Spelling doesn’t have to be perfect.</p>
+  <p v-if="!q" class="hint">Search MAM by author, title or series, then press Search.</p>
 
   <ul v-else-if="loading" class="list" aria-label="Loading results">
     <li v-for="n in 4" :key="n" class="skeleton" />
@@ -94,29 +134,56 @@ const sourceNames = { audible: 'Audible', google: 'Google Books', openlibrary: '
   <p v-else-if="error" class="notice">Search didn’t work: {{ error }}</p>
 
   <template v-else-if="result">
-    <p v-if="result.didYouMean" class="did-you-mean">
-      Did you mean
-      <RouterLink :to="{ query: { q: result.didYouMean, kind } }">{{ result.didYouMean }}</RouterLink>?
-    </p>
-    <p v-for="p in result.problems" :key="p.source" class="muted small">
-      <template v-if="p.reason === 'limit'">
-        {{ sourceNames[p.source] }} has hit its request limit for now, so some books may be missing.
-        <template v-if="p.source === 'google'">Adding a Google Books API key fixes this.</template>
-      </template>
-      <template v-else>{{ sourceNames[p.source] }} didn’t answer, so some books may be missing.</template>
-    </p>
+    <p v-if="result.status !== 'ok'" class="notice">{{ result.message }}</p>
 
-    <p v-if="result.suggestions.length === 0" class="notice">
-      No books found for “{{ result.query }}”. Try fewer words, or just the author.
-    </p>
-    <ul v-else class="list">
-      <li v-for="book in result.suggestions" :key="book.id">
-        <BookRow :book="book" :kind="kind" @open="open = book" />
-      </li>
-    </ul>
+    <template v-else>
+      <div v-if="books.length === 0 && others.length === 0" class="notice nothing">
+        <p>MAM has nothing for “{{ result.query }}”.</p>
+        <RouterLink v-if="result.didYouMean" class="btn btn--primary" :to="{ query: { q: result.didYouMean, kind } }">
+          Search for “{{ result.didYouMean }}” instead
+        </RouterLink>
+        <p v-else class="muted small">Check the spelling, or try just the author’s surname.</p>
+      </div>
+
+      <ul v-if="books.length" class="list">
+        <li v-for="book in books" :key="book.id">
+          <BookRow
+            :book="book"
+            :kind="kind"
+            :torrent="book.torrents[0]"
+            :versions="book.torrents.length"
+            :pack="book.pack"
+            @open="open = book"
+          />
+        </li>
+      </ul>
+      <p v-else-if="others.length" class="notice">Nothing with “{{ result.query }}” in the title, author or series.</p>
+
+      <p v-if="result.hiddenLanguages" class="muted small">
+        {{ result.hiddenLanguages }} result{{ result.hiddenLanguages === 1 ? '' : 's' }} in other languages hidden (Settings → You).
+      </p>
+
+      <template v-if="others.length">
+        <button type="button" class="link" :aria-expanded="showOthers" @click="showOthers = !showOthers">
+          {{ showOthers ? 'Hide' : 'Show' }} {{ others.length }} more that matched another way (narrator, tags…)
+        </button>
+        <ul v-if="showOthers" class="list">
+          <li v-for="book in others" :key="book.id">
+            <BookRow
+              :book="book"
+              :kind="kind"
+              :torrent="book.torrents[0]"
+              :versions="book.torrents.length"
+              :pack="book.pack"
+              @open="open = book"
+            />
+          </li>
+        </ul>
+      </template>
+    </template>
   </template>
 
-  <BookSheet v-if="open" :book="open" :kind="kind" @close="open = undefined" />
+  <BookSheet v-if="open" :book="withDetails(open)" :kind="kind" :torrents="open.torrents" @close="open = undefined" />
 </template>
 
 <style scoped>
@@ -229,5 +296,24 @@ const sourceNames = { audible: 'Audible', google: 'Google Books', openlibrary: '
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+.nothing p { margin: 0 0 10px; }
+.nothing .btn { text-decoration: none; }
+
+.link {
+  min-height: 44px;
+  margin: 6px 0;
+  padding: 0;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--green-500);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+@media (prefers-color-scheme: dark) {
+  .link { color: #8fbf9f; }
 }
 </style>

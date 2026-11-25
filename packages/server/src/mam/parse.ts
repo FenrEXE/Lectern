@@ -10,7 +10,7 @@ export type ParsedTorrent = Omit<MamTorrent, 'matchScore'>;
 
 export class MamError extends Error {
   constructor(
-    readonly kind: 'session-expired' | 'vpn-down' | 'not-configured' | 'error',
+    readonly kind: 'session-expired' | 'vpn-down' | 'not-configured' | 'daily-limit' | 'error',
     message: string,
   ) {
     super(message);

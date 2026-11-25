@@ -1,10 +1,20 @@
-// GET  /api/suggest?q=...&kind=audiobook   "Did you mean": book info only, never MAM
-// POST /api/availability {book, kind}      the chosen book's matches on MAM
+// GET  /api/search?q=...&kind=audiobook    search MAM (one request, or none if cached)
+// POST /api/books/details {kind, books}    covers and details for found books (never MAM)
+// GET  /api/suggest?q=...&kind=audiobook   book info only, never MAM (author/series pages' search)
+// POST /api/availability {book, kind}      find a book from Audible/Google on MAM (author/series pages)
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { languageMatches, type AvailabilityResponse, type SuggestResponse } from '@lectern/shared';
+import {
+  languageMatches,
+  type AvailabilityResponse,
+  type DetailsResponse,
+  type SearchResponse,
+  type SuggestResponse,
+} from '@lectern/shared';
 import type { MamClient } from '../mam/client.js';
 import { checkAvailability } from '../search/availability.js';
+import { bookDetails, MAX_DETAILS } from '../search/details.js';
+import { searchMam } from '../search/mamSearch.js';
 import { suggestBooks, type SuggestDeps } from '../search/suggest.js';
 
 const kind = z.enum(['audiobook', 'ebook']).default('audiobook');
@@ -26,7 +36,28 @@ const availabilityBody = z.object({
   }),
 });
 
+const detailsBody = z.object({
+  kind,
+  books: z
+    .array(z.object({ id: z.string().max(100), title: z.string().trim().min(1).max(500), author: z.string().max(200).optional() }))
+    .max(MAX_DETAILS),
+});
+
 export function searchRoutes(app: FastifyInstance, deps: SuggestDeps & { mam: MamClient }): void {
+  app.get('/api/search', async (req, reply): Promise<SearchResponse | void> => {
+    const parsed = suggestQuery.safeParse(req.query);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Bad request' });
+    }
+    return searchMam({ ...deps, log: req.log }, parsed.data.q, parsed.data.kind, { language: req.user!.language });
+  });
+
+  app.post('/api/books/details', async (req, reply): Promise<DetailsResponse | void> => {
+    const parsed = detailsBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'Bad request' });
+    return bookDetails({ ...deps, log: req.log }, parsed.data.kind, parsed.data.books);
+  });
+
   app.get('/api/suggest', async (req, reply): Promise<SuggestResponse | void> => {
     const parsed = suggestQuery.safeParse(req.query);
     if (!parsed.success) {

@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
-import type { AvailabilityResponse, BookSuggestion, LibraryRequest, MamTorrent, MediaKind } from '@lectern/shared';
+import type { AvailabilityResponse, Book, LibraryRequest, MamTorrent, MediaKind } from '@lectern/shared';
 import { api } from '../api';
 import { duration, joinNames, seriesLabel } from '../format';
 import BookCover from './BookCover.vue';
 
-// The book page, as a sheet over the search results. Opening it is the
-// moment Lectern asks MAM: only for the one book the person chose.
-const props = defineProps<{ book: BookSuggestion; kind: MediaKind }>();
+// The book page, as a sheet over a list. From Search, the book's torrents
+// came with the search, so opening it costs MAM nothing. From an author or
+// series page (books from Audible/Google), opening it asks MAM for this one book.
+const props = defineProps<{ book: Book & { id: string }; kind: MediaKind; torrents?: MamTorrent[] }>();
 const emit = defineEmits<{ close: [] }>();
 
 const dialog = ref<HTMLDialogElement>();
@@ -40,6 +41,10 @@ async function add(t: MamTorrent): Promise<void> {
 async function check(): Promise<void> {
   availability.value = undefined;
   loadError.value = undefined;
+  if (props.torrents) {
+    availability.value = { status: 'ok', queries: [], matches: props.torrents, others: [] };
+    return;
+  }
   try {
     availability.value = await api.availability(props.book, props.kind);
   } catch (err) {
