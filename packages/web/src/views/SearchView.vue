@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { RouterLink, useRoute, useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import type { BookDetails, FoundBook, MediaKind, SearchResponse } from '@lectern/shared';
 import { api } from '../api';
 import BookRow from '../components/BookRow.vue';
 import BookSheet from '../components/BookSheet.vue';
+import { askToSearch, takeSearchAsk } from '../searchIntent';
 import { defaultKind } from '../session';
 
 // Search MAM first: pressing Search sends one MAM request (none if someone
@@ -61,7 +62,11 @@ async function loadDetails(list: FoundBook[]): Promise<void> {
   }
 }
 
+// A search contacts MAM only when Search was pressed (or a "Did you mean"
+// tapped). Opening the page from a link, a refresh or the back button only
+// shows a saved answer, so loading a page never contacts MAM.
 async function load(): Promise<void> {
+  const cachedOnly = !takeSearchAsk();
   inFlight?.abort();
   result.value = undefined;
   error.value = undefined;
@@ -70,7 +75,7 @@ async function load(): Promise<void> {
   const controller = (inFlight = new AbortController());
   loading.value = true;
   try {
-    result.value = await api.search(q.value, kind.value, controller.signal);
+    result.value = await api.search(q.value, kind.value, controller.signal, cachedOnly);
     void loadDetails(result.value.books);
   } catch (err) {
     if (!controller.signal.aborted) error.value = (err as Error).message;
@@ -90,11 +95,21 @@ watch(showOthers, (shown) => {
 
 function submit(): void {
   const text = typed.value.trim();
-  if (text) void router.push({ query: { q: text, kind: kind.value } });
+  if (!text) return;
+  askToSearch();
+  // Same search again: the address doesn't change, so load directly.
+  if (text === q.value && route.query.kind === kind.value) void load();
+  else void router.push({ query: { q: text, kind: kind.value } });
 }
 
 function setKind(k: MediaKind): void {
+  askToSearch();
   void router.replace({ query: { ...route.query, kind: k } });
+}
+
+function tryInstead(text: string): void {
+  askToSearch();
+  void router.push({ query: { q: text, kind: kind.value } });
 }
 </script>
 
@@ -136,12 +151,17 @@ function setKind(k: MediaKind): void {
   <template v-else-if="result">
     <p v-if="result.status !== 'ok'" class="notice">{{ result.message }}</p>
 
+    <div v-else-if="result.notCached" class="notice nothing">
+      <p>Press Search to look for “{{ result.query }}” on MAM.</p>
+      <button type="button" class="btn btn--primary" @click="submit">Search MAM</button>
+    </div>
+
     <template v-else>
       <div v-if="books.length === 0 && others.length === 0" class="notice nothing">
         <p>MAM has nothing for “{{ result.query }}”.</p>
-        <RouterLink v-if="result.didYouMean" class="btn btn--primary" :to="{ query: { q: result.didYouMean, kind } }">
+        <button v-if="result.didYouMean" type="button" class="btn btn--primary" @click="tryInstead(result.didYouMean)">
           Search for “{{ result.didYouMean }}” instead
-        </RouterLink>
+        </button>
         <p v-else class="muted small">Check the spelling, or try just the author’s surname.</p>
       </div>
 

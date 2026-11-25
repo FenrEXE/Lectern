@@ -1,11 +1,13 @@
 // Small display helpers.
 import type { SeriesPosition } from '@lectern/shared';
 
-/** "Mistborn, Book 2" or just "Mistborn". */
+/** "Mistborn, Book 2", "Mistborn, Books 1–3" (a pack) or just "Mistborn". */
 export function seriesLabel(series?: SeriesPosition[]): string | undefined {
   const s = series?.[0];
   if (!s) return undefined;
-  return s.number ? `${s.name}, Book ${s.number}` : s.name;
+  if (!s.number) return s.name;
+  const several = /[-–,&]/.test(s.number);
+  return `${s.name}, ${several ? 'Books' : 'Book'} ${s.number.replace(/\s*-\s*/g, '–')}`;
 }
 
 /** 1490 → "24h 50m" */

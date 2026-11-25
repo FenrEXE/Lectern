@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import type { AuthorResponse, BookSuggestion, MediaKind } from '@lectern/shared';
 import { api } from '../api';
+import { useMamCheck } from '../mamCheck';
 import BookSheet from '../components/BookSheet.vue';
 import BookTile from '../components/BookTile.vue';
 import { defaultKind } from '../session';
@@ -19,6 +20,7 @@ const kind = computed<MediaKind>(() =>
   route.query.kind === 'ebook' || route.query.kind === 'audiobook' ? route.query.kind : defaultKind.value,
 );
 const sort = ref<'series' | 'newest' | 'az'>('series');
+const mamCheck = useMamCheck();
 
 const data = ref<AuthorResponse>();
 const error = ref<string>();
@@ -29,6 +31,7 @@ watch(
   async () => {
     data.value = undefined;
     error.value = undefined;
+    mamCheck.reset();
     try {
       data.value = await api.author(name.value, kind.value, authorId.value);
     } catch (err) {
@@ -49,6 +52,12 @@ function setKind(k: MediaKind): void {
   void router.replace({ query: { ...route.query, kind: k } });
 }
 
+// One MAM search for the author's name covers every book on the page.
+function checkMam(): void {
+  void mamCheck.check(kind.value, name.value, allBooks.value);
+}
+const onMamCount = computed(() => allBooks.value.filter((b) => mamCheck.state(b.id) === 'yes').length);
+
 const numberLabel = (b: BookSuggestion) => (b.series?.[0]?.number ? `Book ${b.series[0].number}` : undefined);
 </script>
 
@@ -66,6 +75,13 @@ const numberLabel = (b: BookSuggestion) => (b.series?.[0]?.number ? `Book ${b.se
         <button type="button" :aria-pressed="sort === 'newest'" @click="sort = 'newest'">Newest</button>
         <button type="button" :aria-pressed="sort === 'az'" @click="sort = 'az'">A–Z</button>
       </div>
+    </div>
+    <div class="mam-check">
+      <button v-if="!mamCheck.result.value || mamCheck.error.value" type="button" class="btn" :disabled="mamCheck.checking.value || !data || !allBooks.length" @click="checkMam">
+        {{ mamCheck.checking.value ? 'Checking MAM…' : 'Check what’s on MAM' }}
+      </button>
+      <p v-else class="muted small">{{ onMamCount }} of {{ allBooks.length }} found on MAM.</p>
+      <p v-if="mamCheck.error.value" class="msg-error small">{{ mamCheck.error.value }}</p>
     </div>
   </header>
 
@@ -87,7 +103,7 @@ const numberLabel = (b: BookSuggestion) => (b.series?.[0]?.number ? `Book ${b.se
         </h2>
         <ul class="shelf">
           <li v-for="b in group.books" :key="b.id">
-            <BookTile :book="b" :kind="kind" :label="numberLabel(b)" @open="open = b" />
+            <BookTile :book="b" :kind="kind" :label="numberLabel(b)" :mam="mamCheck.state(b.id)" @open="open = b" />
           </li>
         </ul>
       </section>
@@ -96,7 +112,7 @@ const numberLabel = (b: BookSuggestion) => (b.series?.[0]?.number ? `Book ${b.se
         <h2>Standalone books</h2>
         <ul class="shelf">
           <li v-for="b in data.standalone" :key="b.id">
-            <BookTile :book="b" :kind="kind" :label="b.publishedYear ? String(b.publishedYear) : undefined" @open="open = b" />
+            <BookTile :book="b" :kind="kind" :label="b.publishedYear ? String(b.publishedYear) : undefined" :mam="mamCheck.state(b.id)" @open="open = b" />
           </li>
         </ul>
       </section>
@@ -104,12 +120,12 @@ const numberLabel = (b: BookSuggestion) => (b.series?.[0]?.number ? `Book ${b.se
 
     <ul v-else class="grid">
       <li v-for="b in flat" :key="b.id">
-        <BookTile :book="b" :kind="kind" :label="b.publishedYear ? String(b.publishedYear) : undefined" @open="open = b" />
+        <BookTile :book="b" :kind="kind" :label="b.publishedYear ? String(b.publishedYear) : undefined" :mam="mamCheck.state(b.id)" @open="open = b" />
       </li>
     </ul>
   </template>
 
-  <BookSheet v-if="open" :book="open" :kind="kind" @close="open = undefined" />
+  <BookSheet v-if="open" :book="open" :kind="kind" :torrents="mamCheck.torrents(open.id)" @close="open = undefined" />
 </template>
 
 <style scoped>
@@ -197,4 +213,8 @@ h1 {
 @media (prefers-reduced-motion: reduce) {
   .skeleton { animation: none; }
 }
+.mam-check { margin-top: 12px; }
+.mam-check p { margin: 6px 0 0; }
+.muted { color: var(--text-muted); }
+.small { font-size: 13px; }
 </style>

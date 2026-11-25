@@ -5,6 +5,7 @@ import type { LibraryRequest, StatusResponse } from '@lectern/shared';
 import { api } from '../api';
 import BookTile from '../components/BookTile.vue';
 import MamStatsBar from '../components/MamStatsBar.vue';
+import { askToSearch } from '../searchIntent';
 import { isAdmin, me } from '../session';
 
 const router = useRouter();
@@ -31,7 +32,9 @@ function greeting(): string {
 
 function search(): void {
   const q = query.value.trim();
-  if (q) void router.push({ name: 'search', query: { q } });
+  if (!q) return;
+  askToSearch();
+  void router.push({ name: 'search', query: { q } });
 }
 
 onMounted(async () => {

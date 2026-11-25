@@ -66,11 +66,18 @@ docker build -t lectern .
   service:qbittorrent`) with `MAM_REQUIRE_INTERFACE=wg0`, so the client refuses
   to send anything while the tunnel is down.
 - Never call MAM when a page loads. Use only user actions and spaced-out
-  background jobs. Search asks MAM only after the person picks a book.
-- A chosen book fans out to **at most 3** MAM queries (title + surname, then
-  series + surname, then author), stopping early on a strong match. Requests go
-  through one queue at least 2 seconds apart, and results are cached for 15
-  minutes.
+  background jobs. Opening the Search page with a query in its address only
+  reads the cache (`cached=1`); MAM is asked when Search is pressed.
+- **Search is MAM first** (`search/mamSearch.ts`): one MAM request per search,
+  100 results, cached 3 hours and shared by all profiles. Results are filtered
+  (language, title/author/series match), grouped into books and ordered without
+  asking MAM again. Opening a found book costs nothing.
+- **At most 150 MAM searches a day** (`DAILY_SEARCH_LIMIT`; cache hits don't
+  count). One queue, at least 2 seconds between requests.
+- Author/series pages never contact MAM on their own. "Check what's on MAM"
+  (`search/onMam.ts`) is one search for the whole page. A book opened from those
+  pages without a check still uses the old fan-out (`search/availability.ts`):
+  at most 3 queries, stopping early on a strong match.
 - **MAM only allows automating what's on its API page.** Lectern uses exactly
   three of those: *Torrent Search (JSON)*, *Download Torrent* and the user
   summary `GET /jsonLoad.php?snatch_summary` (ratio and unsatisfied count).
@@ -159,11 +166,15 @@ docker build -t lectern .
   `/api/cover`, which caches small WebP copies.
 
 ### Metadata
-- Search suggestions come from Audible's public catalogue (best for audio:
-  forgiving of typos, knows series) and Google Books (best for ebooks: ISBNs).
-  Open Library is the backup: always asked for ebooks, and for audiobooks while
-  Google is resting. Results are merged so each book appears once, and cached
-  for 24 hours.
+- Book info (covers, descriptions, ASINs, series lists, "did you mean") comes
+  from Audible's public catalogue (best for audio), Google Books (best for
+  ebooks: ISBNs) and Open Library (backup). Never from MAM. Covers for search
+  results are fetched only for books on screen (`search/details.ts`), cached 30
+  days, and used only when title and author clearly match.
+- Each profile has a book language (`users.language`, default English, or
+  "any"). Search, author and series pages hide other languages; books whose
+  language isn't known are kept. Author pages match Audible's author ID when
+  known, otherwise the exact name (initials written any way: `sameAuthor`).
 - Google Books without a key shares a quota with everyone else's keyless
   requests, which runs out. Set `GOOGLE_BOOKS_API_KEY`. After any "quota
   exceeded" (429, or a 403 that mentions quota), a source rests for an hour

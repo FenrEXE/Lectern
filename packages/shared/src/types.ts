@@ -282,6 +282,11 @@ export interface SearchResponse {
   hiddenLanguages: number;
   /** When MAM found nothing: a likely spelling, from Audible or Google. Not searched until tapped. */
   didYouMean?: string;
+  /**
+   * Only set when the page asked for cached results (opening a link or going
+   * back): nothing recent was saved, so MAM wasn't asked. Press Search to ask.
+   */
+  notCached?: boolean;
 }
 
 /** Extra details for a found book, from Audible, Google Books or Open Library (never MAM). */
@@ -296,3 +301,18 @@ export interface DetailsRequest {
   books: Array<{ id: string; title: string; author?: string }>;
 }
 export type DetailsResponse = Record<string, BookDetails>;
+
+/** POST /api/onmam: which books on an author or series page MAM has, from one MAM search. */
+export interface OnMamRequest {
+  kind: MediaKind;
+  /** What to search MAM for: the series name (plus the author's surname), or the author. */
+  query: string;
+  books: Array<Pick<Book, 'title' | 'subtitle' | 'authors' | 'series' | 'isbn'> & { id: string }>;
+}
+
+export interface OnMamResponse {
+  status: AvailabilityStatus;
+  message?: string;
+  /** The book ids MAM has, each with its torrents (best first). Missing ids: not found. */
+  found: Record<string, MamTorrent[]>;
+}

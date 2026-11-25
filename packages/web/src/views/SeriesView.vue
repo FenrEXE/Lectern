@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import type { BookSuggestion, MediaKind, SeriesResponse } from '@lectern/shared';
 import { api } from '../api';
+import { useMamCheck } from '../mamCheck';
 import BookRow from '../components/BookRow.vue';
 import BookSheet from '../components/BookSheet.vue';
 import { defaultKind } from '../session';
@@ -19,12 +20,22 @@ const kind = computed<MediaKind>(() =>
 const data = ref<SeriesResponse>();
 const error = ref<string>();
 const open = ref<BookSuggestion>();
+const mamCheck = useMamCheck();
+const books = computed(() => data.value?.books ?? []);
+
+// One MAM search (the series name and the author's surname) covers the whole series.
+function checkMam(): void {
+  const surname = author.value?.trim().split(/\s+/).pop() ?? '';
+  void mamCheck.check(kind.value, `${data.value?.series ?? name.value} ${surname}`.trim(), books.value);
+}
+const onMamCount = computed(() => books.value.filter((b) => mamCheck.state(b.id) === 'yes').length);
 
 watch(
   [name, author, authorId, kind],
   async () => {
     data.value = undefined;
     error.value = undefined;
+    mamCheck.reset();
     try {
       data.value = await api.series(name.value, author.value, kind.value, authorId.value);
     } catch (err) {
@@ -42,6 +53,13 @@ watch(
     <p v-if="author" class="by">
       by <RouterLink :to="{ name: 'author', params: { name: author }, query: { kind, id: authorId } }">{{ author }}</RouterLink>
     </p>
+    <div class="mam-check">
+      <button v-if="!mamCheck.result.value || mamCheck.error.value" type="button" class="btn" :disabled="mamCheck.checking.value || !data || !books.length" @click="checkMam">
+        {{ mamCheck.checking.value ? 'Checking MAM…' : 'Check what’s on MAM' }}
+      </button>
+      <p v-else class="muted small">{{ onMamCount }} of {{ books.length }} found on MAM.</p>
+      <p v-if="mamCheck.error.value" class="msg-error small">{{ mamCheck.error.value }}</p>
+    </div>
   </header>
 
   <p v-if="error" class="panel">Couldn’t load this series: {{ error }}</p>
@@ -51,11 +69,18 @@ watch(
   <p v-else-if="data.books.length === 0" class="panel">No books found in this series.</p>
   <ol v-else class="list">
     <li v-for="b in data.books" :key="b.id">
-      <BookRow :book="b" :kind="kind" @open="open = b" />
+      <BookRow
+        :book="b"
+        :kind="kind"
+        :torrent="mamCheck.torrents(b.id)?.[0]"
+        :versions="mamCheck.torrents(b.id)?.length"
+        :missing="mamCheck.state(b.id) === 'no'"
+        @open="open = b"
+      />
     </li>
   </ol>
 
-  <BookSheet v-if="open" :book="open" :kind="kind" @close="open = undefined" />
+  <BookSheet v-if="open" :book="open" :kind="kind" :torrents="mamCheck.torrents(open.id)" @close="open = undefined" />
 </template>
 
 <style scoped>
@@ -107,4 +132,8 @@ h1 {
 @media (prefers-reduced-motion: reduce) {
   .skeleton { animation: none; }
 }
+.mam-check { margin-top: 12px; }
+.mam-check p { margin: 6px 0 0; }
+.muted { color: var(--text-muted); }
+.small { font-size: 13px; }
 </style>

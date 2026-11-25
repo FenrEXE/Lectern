@@ -11,6 +11,8 @@ import type {
   MeResponse,
   Profile,
   ProfileLibrary,
+  OnMamRequest,
+  OnMamResponse,
   ProfilesResponse,
   SearchResponse,
   SeriesResponse,
@@ -110,8 +112,10 @@ export const api = {
 
   // ── Finding books ──
   /** Search MAM: one request (or none if cached). Only call on Enter, never while typing. */
-  search: (q: string, kind: MediaKind, signal?: AbortSignal) =>
-    request<SearchResponse>(`/api/search?${new URLSearchParams({ q, kind })}`, { signal }),
+  search: (q: string, kind: MediaKind, signal?: AbortSignal, cachedOnly = false) =>
+    request<SearchResponse>(`/api/search?${new URLSearchParams({ q, kind, ...(cachedOnly ? { cached: '1' } : {}) })}`, {
+      signal,
+    }),
 
   /** Covers and descriptions for found books, from Audible/Google/Open Library (never MAM). */
   details: (kind: MediaKind, books: Array<{ id: string; title: string; author?: string }>) =>
@@ -128,6 +132,9 @@ export const api = {
     request<SeriesResponse>(
       `/api/series?${new URLSearchParams({ name, kind, ...(author ? { author } : {}), ...(author && authorId ? { authorId } : {}) })}`,
     ),
+
+  /** "Check MAM" on an author or series page: one MAM search for all its books. */
+  onMam: (request: OnMamRequest) => post<OnMamResponse>('/api/onmam', request),
 
   availability: (book: Book, kind: MediaKind) =>
     post<AvailabilityResponse>('/api/availability', {

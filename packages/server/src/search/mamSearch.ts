@@ -124,6 +124,11 @@ export function orderBooks(query: string, books: Array<FoundBook & { relevance: 
 export interface SearchOptions {
   /** Lectern's language id, or "any". */
   language: string;
+  /**
+   * Answer only from the cache, never MAM. Used when a page opens with a
+   * search already in its address, so loading a page never contacts MAM.
+   */
+  cachedOnly?: boolean;
 }
 
 export async function searchMam(
@@ -138,6 +143,10 @@ export async function searchMam(
   }
 
   let found: ParsedTorrent[];
+  if (options.cachedOnly) {
+    const hit = deps.mam.cachedSearch(query, kind);
+    if (!hit) return { ...empty, status: 'ok', notCached: true };
+  }
   try {
     found = await deps.mam.search(query, kind);
   } catch (err) {

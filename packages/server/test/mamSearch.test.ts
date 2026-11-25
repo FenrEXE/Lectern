@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DetailsResponse, SearchResponse } from '@lectern/shared';
+import type { DetailsResponse, OnMamResponse, SearchResponse } from '@lectern/shared';
 import { DAILY_SEARCH_LIMIT } from '../src/mam/client.js';
 import { audibleMistborn, fakeFetch, json, mamFinalEmpire } from './fixtures.js';
 import { testApp } from './helpers.js';
@@ -47,6 +47,18 @@ describe('MAM-first search', () => {
 
     // The same search again (any profile) is answered from the cache.
     await search('Sanderson');
+    expect(mamCalls()).toBe(1);
+    await app.close();
+  });
+
+  it('never asks MAM when the page only opened (cached answers only)', async () => {
+    const { app, asAdmin, mamCalls, search } = await appWithMam(mamFinalEmpire.data);
+    const opened = (await asAdmin({ url: '/api/search?q=sanderson&kind=audiobook&cached=1' })).json<SearchResponse>();
+    expect(opened.notCached).toBe(true);
+    expect(mamCalls()).toBe(0);
+    await search('sanderson'); // Search pressed
+    const again = (await asAdmin({ url: '/api/search?q=sanderson&kind=audiobook&cached=1' })).json<SearchResponse>();
+    expect(again.books.length).toBeGreaterThan(0);
     expect(mamCalls()).toBe(1);
     await app.close();
   });
@@ -126,6 +138,34 @@ describe('MAM-first search', () => {
     expect(details.a?.asin).toBe('B002UZMLXM');
     expect(details.b).toBeUndefined(); // same title, wrong author: no cover rather than the wrong one
     expect(f.calls.some((c) => c.url.includes('myanonamouse'))).toBe(false);
+    await app.close();
+  });
+
+  it('checks a whole series page against MAM with one search', async () => {
+    const { app, asAdmin, mamCalls } = await appWithMam(mamFinalEmpire.data);
+    const book = (id: string, title: string, number: string) => ({
+      id,
+      title,
+      authors: ['Brandon Sanderson'],
+      series: [{ name: 'Mistborn', number }],
+    });
+    const res = (
+      await asAdmin({
+        method: 'POST',
+        url: '/api/onmam',
+        payload: {
+          kind: 'audiobook',
+          query: 'mistborn sanderson',
+          books: [book('a', 'The Final Empire', '1'), book('b', 'The Well of Ascension', '2'), book('c', 'The Hero of Ages', '3')],
+        },
+      })
+    ).json<OnMamResponse>();
+    expect(res.status).toBe('ok');
+    expect(mamCalls()).toBe(1);
+    expect(res.found.a!.map((t) => t.id)).toEqual(expect.arrayContaining(['1001', '1002']));
+    expect(res.found.b!.map((t) => t.id)).toContain('1003');
+    // Book 3 only exists inside a pack with another title: shown as not found.
+    expect(res.found.c).toBeUndefined();
     await app.close();
   });
 });

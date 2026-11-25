@@ -87,6 +87,11 @@ export class MamClient {
     setSetting(this.opts.db, STORED_FROM, this.config.mam.cookie ?? '');
   }
 
+  /** A recent answer for this search, without contacting MAM (undefined if none). */
+  cachedSearch(text: string, kind: MediaKind): ParsedTorrent[] | undefined {
+    return cacheGet<ParsedTorrent[]>(this.opts.db, `mam:search:${kind}:${normalizeText(text)}`, this.now());
+  }
+
   /** Search one category. Cached; queued behind any other MAM request. */
   async search(text: string, kind: MediaKind): Promise<ParsedTorrent[]> {
     const key = `mam:search:${kind}:${normalizeText(text)}`;

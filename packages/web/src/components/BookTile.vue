@@ -3,15 +3,18 @@ import type { Book, MediaKind } from '@lectern/shared';
 import BookCover from './BookCover.vue';
 
 // A cover with a title under it, for shelves and grids.
-defineProps<{ book: Book; kind: MediaKind; label?: string }>();
+// `mam`: after "Check MAM", whether MAM has it ('no' dims the tile).
+defineProps<{ book: Book; kind: MediaKind; label?: string; mam?: 'yes' | 'no' }>();
 defineEmits<{ open: [] }>();
 </script>
 
 <template>
-  <button type="button" class="tile" @click="$emit('open')">
+  <button type="button" class="tile" :class="{ 'tile--missing': mam === 'no' }" @click="$emit('open')">
     <BookCover :src="book.coverUrl" :title="book.title" :shape="kind === 'audiobook' ? 'square' : 'portrait'" :width="140" />
     <span v-if="label" class="tile__label">{{ label }}</span>
     <span class="tile__title">{{ book.title }}</span>
+    <span v-if="mam === 'yes'" class="tile__mam">On MAM</span>
+    <span v-else-if="mam === 'no'" class="tile__mam tile__mam--no">Not found on MAM</span>
   </button>
 </template>
 
@@ -51,5 +54,22 @@ defineEmits<{ open: [] }>();
 
 @media (prefers-color-scheme: dark) {
   .tile__label { color: #8fbf9f; }
+}
+.tile--missing { opacity: 0.5; }
+
+.tile__mam {
+  align-self: flex-start;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-text);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.tile__mam--no {
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
 }
 </style>

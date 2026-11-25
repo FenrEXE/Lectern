@@ -5,7 +5,15 @@ import BookCover from './BookCover.vue';
 
 // One book in a list. From a MAM search, `torrent` is its best version and
 // `versions` how many there are; those show as a line of MAM details.
-const props = defineProps<{ book: Book; kind: MediaKind; torrent?: MamTorrent; versions?: number; pack?: boolean }>();
+const props = defineProps<{
+  book: Book;
+  kind: MediaKind;
+  torrent?: MamTorrent;
+  versions?: number;
+  pack?: boolean;
+  /** After "Check MAM" on a series page: MAM doesn't seem to have it (dimmed). */
+  missing?: boolean;
+}>();
 
 function mamLine(): string {
   const t = props.torrent;
@@ -23,7 +31,7 @@ defineEmits<{ open: [] }>();
 </script>
 
 <template>
-  <button type="button" class="row" @click="$emit('open')">
+  <button type="button" class="row" :class="{ 'row--missing': missing }" @click="$emit('open')">
     <BookCover
       class="row__cover"
       :src="book.coverUrl"
@@ -40,6 +48,7 @@ defineEmits<{ open: [] }>();
       <span class="row__meta row__small">
         {{ [book.publishedYear, kind === 'audiobook' ? duration(book.durationMinutes) : undefined].filter(Boolean).join(' · ') }}
       </span>
+      <span v-if="missing" class="row__mam">Not found on MAM</span>
       <span v-if="torrent" class="row__mam">
         {{ mamLine() }}
         <span v-if="pack" class="row__badge">Pack</span>
@@ -119,4 +128,5 @@ defineEmits<{ open: [] }>();
   background: transparent;
   border: 1px solid var(--border);
 }
+.row--missing { opacity: 0.55; }
 </style>

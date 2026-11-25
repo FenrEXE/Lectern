@@ -19,15 +19,33 @@ Easy to host, easy to update, and easy for other MAM users to install.
 - **Works in the browser:** a PWA that can be added to the home screen. No app
   store and no native build.
 
-## Smart search
+## Search: MAM first
 
-1. **Work out what was meant.** The messy text ("brandon sandersen mistborn")
-   goes to the metadata sources, which return the real author, series and
-   titles, plus a "did you mean" list.
-2. **Fan out.** Run up to three MAM searches in parallel: author, series and title.
-3. **Merge and rank.** Drop duplicates, then rank by closeness to what was typed,
-   by format (audio or ebook) and by seeders.
-4. **Cache.** A repeated search is instant and costs MAM nothing.
+Everything Search lists is something MAM actually has.
+
+1. **One MAM search** when you press Search (never while typing, never when a
+   page merely opens). Title, author, series and narrator; up to 100 results.
+   Answers are kept for 3 hours and shared by every profile.
+2. **Tidy, without asking MAM again:** hide other languages (each profile picks
+   one); keep results whose title, author or series match what was typed and
+   move narrator-only matches under "more that matched another way"; group
+   uploads of the same book (title + author + series number) with the best
+   version first; single books before packs unless a series was searched.
+3. **Covers and descriptions** come from Audible, Google Books and Open Library,
+   only for books on screen, and only when title and author clearly match.
+4. **Typos:** if MAM finds nothing, Audible/Google suggest a spelling, shown as
+   a button. MAM is searched again only if it's tapped.
+5. **Limits:** one request at a time, 2 seconds apart, at most 150 searches a
+   day (cached answers don't count).
+
+Opening a book from Search costs MAM nothing: its versions came with the search.
+
+### Author and series pages
+- Books come from Audible and Google Books. Opened from a book, an author page
+  uses Audible's author ID, so look-alike names (R. Knight, R.J. Knight) don't
+  mix. Other languages are hidden.
+- **Check what's on MAM** does one MAM search for the whole page and marks each
+  book "On MAM" or "Not found on MAM". Only when the button is pressed.
 
 ## Audiobooks and ebooks
 
