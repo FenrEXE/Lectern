@@ -301,7 +301,8 @@ export class RequestService {
       const result = await importBook({ fetch: this.o.fetch, library, book: req.book, files });
       let message: string | null = result.alreadyThere ? 'Already in your library, so nothing was changed.' : null;
       if (!result.alreadyThere && result.copied > 0) {
-        message = 'Copied rather than linked (the download and library are on different drives), so it uses extra space.';
+        message =
+          'Copied rather than hardlinked, so it uses extra space. Lectern sees the downloads and this library as different drives; Settings → Profiles explains how to fix it.';
       }
 
       if (libraryId && this.o.abs.isConfigured()) {
@@ -322,6 +323,12 @@ export class RequestService {
   // ── Helpers ──
 
   /** qBittorrent's path for a folder → the same folder as Lectern sees it. */
+  /** Where qBittorrent saves Lectern's downloads, as Lectern sees it (if set). */
+  downloadsFolder(): string | undefined {
+    const savePath = this.config.qbittorrent.savePath;
+    return savePath ? this.localPath(savePath) : undefined;
+  }
+
   private localPath(qbPath: string): string {
     const { pathFrom, pathTo } = this.config.qbittorrent;
     if (pathFrom && pathTo && qbPath.startsWith(pathFrom)) {

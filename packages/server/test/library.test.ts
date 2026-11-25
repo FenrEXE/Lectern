@@ -296,3 +296,26 @@ describe('Add to Library, start to finish', () => {
     await app.close();
   });
 });
+
+describe('hardlink check', () => {
+  it('says "linked" on one drive, and explains when it can’t tell', async () => {
+    const { checkHardlink } = await import('../src/library/hardlinkCheck.js');
+    const downloads = tmp('dl');
+    const library = tmp('lib');
+    expect((await checkHardlink(downloads, library)).result).toBe('linked');
+    expect(fs.readdirSync(downloads)).toEqual([]); // cleaned up
+    expect(fs.readdirSync(library)).toEqual([]);
+    expect((await checkHardlink(undefined, library)).result).toBe('unknown');
+    expect((await checkHardlink(path.join(downloads, 'missing'), library)).message).toMatch(/can’t see the downloads folder/);
+  });
+
+  it('is admin only, and uses the downloads folder from the qBittorrent settings', async () => {
+    const downloads = tmp('dl');
+    const library = tmp('lib');
+    const { app, asAdmin } = await testApp({ QB_SAVE_PATH: downloads });
+    const res = await asAdmin({ url: `/api/admin/hardlink-check?dir=${encodeURIComponent(library)}` });
+    expect(res.json()).toMatchObject({ result: 'linked' });
+    expect((await app.inject({ url: `/api/admin/hardlink-check?dir=${encodeURIComponent(library)}` })).statusCode).toBe(401);
+    await app.close();
+  });
+});

@@ -5,6 +5,7 @@
 // POST /api/admin/test/:service       mam | qbittorrent | audiobookshelf | google
 // GET  /api/admin/abs/libraries       Audiobookshelf's libraries, to pick one per profile
 // GET  /api/admin/folders?path=       folders on the server, to pick a library folder
+// GET  /api/admin/hardlink-check?dir=  will books be hardlinked into this library folder, or copied?
 // GET  /api/admin/users               every profile
 // POST /api/admin/users               add a profile
 // PUT  /api/admin/users/:id           change a profile (name, password, role, libraries...)
@@ -20,6 +21,7 @@ import type { SessionStore } from '../auth/sessions.js';
 import { UserError, type UserStore } from '../auth/users.js';
 import { readConfig, type ConfigSource } from '../config.js';
 import { HttpError, type FetchFn } from '../http.js';
+import { checkHardlink, type HardlinkCheck } from '../library/hardlinkCheck.js';
 import type { MamClient } from '../mam/client.js';
 import { MamError } from '../mam/parse.js';
 import { searchGoogleBooks } from '../metadata/googleBooks.js';
@@ -43,6 +45,8 @@ export interface AdminDeps {
   qb: QbClient;
   abs: AbsClient;
   fetch: FetchFn;
+  /** Where downloads land, as Lectern sees them. */
+  downloadsFolder: () => string | undefined;
 }
 
 export interface TestResult {
@@ -103,6 +107,12 @@ const fail = (reply: FastifyReply, err: unknown) => {
 
 export function adminRoutes(app: FastifyInstance, deps: AdminDeps): void {
   const { settings, users, sessions } = deps;
+
+  app.get<{ Querystring: { dir?: string } }>('/api/admin/hardlink-check', async (req, reply): Promise<HardlinkCheck | void> => {
+    const dir = req.query.dir?.trim();
+    if (!dir || !path.isAbsolute(dir)) return reply.code(400).send({ error: 'Which library folder?' });
+    return checkHardlink(deps.downloadsFolder(), dir);
+  });
 
   // ── Connection settings ──
 

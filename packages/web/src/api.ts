@@ -180,6 +180,9 @@ export const api = {
     tidyApply: (runId: number, items: number[]) => post<TidyRun>(`/api/admin/tidy/${runId}/apply`, { items }),
     tidyUndo: (runId: number) => post<TidyRun>(`/api/admin/tidy/${runId}/undo`),
     folders: (path: string) => request<FolderListing>(`/api/admin/folders?${new URLSearchParams({ path })}`),
+    /** Will books be hardlinked into this library folder, or copied? */
+    hardlinkCheck: (dir: string) =>
+      request<{ result: 'linked' | 'copy' | 'unknown'; message: string }>(`/api/admin/hardlink-check?${new URLSearchParams({ dir })}`),
     users: () => request<Profile[]>('/api/admin/users'),
     addUser: (input: ProfileInput) => post<Profile>('/api/admin/users', input),
     updateUser: (id: number, changes: ProfileInput) => put<Profile>(`/api/admin/users/${id}`, changes),

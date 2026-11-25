@@ -83,7 +83,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   healthRoutes(app, config, mam, requests, opts.version);
   authRoutes(app, { users, sessions, limiter: new LoginLimiter(), settings, config, setupCode: opts.setupCode });
-  adminRoutes(app, { settings, config, users, sessions, mam, qb, abs, fetch: fetchFn });
+  adminRoutes(app, { settings, config, users, sessions, mam, qb, abs, fetch: fetchFn, downloadsFolder: () => requests.downloadsFolder() });
   searchRoutes(app, { db: opts.db, config, fetch: fetchFn, mam });
   browseRoutes(app, { db: opts.db, config, fetch: fetchFn });
   coverRoutes(app, { dataDir: config().dataDir, fetch: fetchFn });

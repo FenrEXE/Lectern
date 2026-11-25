@@ -1,7 +1,7 @@
 # Lectern: one image holding the server and the built web app.
 #
 #   docker build -t lectern .
-#   docker run -p 8787:8787 -v ./data:/data --env-file .env lectern
+#   docker run -p 8787:8787 -v ./data:/data -e PUID=1000 -e PGID=1000 lectern
 
 # ── Build stage: install everything, compile, then drop dev-only packages ──
 FROM node:22-bookworm-slim AS build
@@ -39,12 +39,17 @@ COPY --from=build /app/packages/server/package.json packages/server/
 COPY --from=build /app/packages/server/dist packages/server/dist
 COPY --from=build /app/packages/web/dist packages/web/dist
 
-RUN mkdir -p /data && chown node:node /data
-USER node
+# Starts as root only to hand /data to PUID:PGID, then runs Lectern as that
+# user (see docker/entrypoint.sh). setpriv comes with Debian.
+COPY docker/entrypoint.sh /usr/local/bin/lectern-entrypoint
+RUN chmod 755 /usr/local/bin/lectern-entrypoint && mkdir -p /data
+ENV PUID=1000 \
+    PGID=1000
 VOLUME /data
 EXPOSE 8787
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8787)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
+ENTRYPOINT ["lectern-entrypoint"]
 CMD ["node", "packages/server/dist/index.js"]

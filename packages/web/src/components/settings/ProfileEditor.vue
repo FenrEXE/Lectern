@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue';
+import { reactive, ref, watch } from 'vue';
 import { LANGUAGES, type MediaKind, type Profile } from '@lectern/shared';
-import type { AbsLibrary, ProfileInput } from '../../api';
+import { api, type AbsLibrary, type ProfileInput } from '../../api';
 import FolderPicker from './FolderPicker.vue';
 
 // The form for one profile, used both to add a profile and to change one.
@@ -37,6 +37,29 @@ const form = reactive({
 });
 
 const picking = ref<MediaKind>();
+
+// For each library folder: will books be hardlinked there, or copied?
+// Checked for real (a tiny test file), shortly after the folder changes.
+const linkCheck = reactive<Partial<Record<MediaKind, { result: string; message: string }>>>({});
+const linkTimers: Partial<Record<MediaKind, ReturnType<typeof setTimeout>>> = {};
+for (const k of ['audiobook', 'ebook'] as const) {
+  watch(
+    () => form.libraries[k].dir,
+    (dir) => {
+      clearTimeout(linkTimers[k]);
+      delete linkCheck[k];
+      if (!dir?.startsWith('/')) return;
+      linkTimers[k] = setTimeout(async () => {
+        try {
+          linkCheck[k] = await api.admin.hardlinkCheck(dir);
+        } catch {
+          delete linkCheck[k];
+        }
+      }, 600);
+    },
+    { immediate: true },
+  );
+}
 const confirmRemove = ref(false);
 const prefix = `p${props.profile?.id ?? 'new'}`;
 
@@ -112,6 +135,13 @@ function submit(): void {
           />
           <button type="button" class="btn btn--quiet" @click="picking = k.kind">Browse</button>
         </div>
+        <p
+          v-if="linkCheck[k.kind]"
+          class="field-hint link-check"
+          :class="{ 'link-check--ok': linkCheck[k.kind]!.result === 'linked', 'link-check--bad': linkCheck[k.kind]!.result === 'copy' }"
+        >
+          {{ linkCheck[k.kind]!.message }}
+        </p>
       </div>
       <div class="field">
         <label :for="`${prefix}-${k.kind}-abs`">Audiobookshelf library to scan</label>
@@ -188,5 +218,12 @@ function submit(): void {
 
 .push {
   margin-left: auto;
+}
+.link-check--ok { color: #3e8a5c; }
+.link-check--bad { color: #b3412f; font-weight: 600; }
+
+@media (prefers-color-scheme: dark) {
+  .link-check--ok { color: #6fbf8c; }
+  .link-check--bad { color: #e08a7a; }
 }
 </style>
