@@ -2,7 +2,7 @@
 // GET  /api/admin/tidy                     the newest run and its books
 // POST /api/admin/tidy/scan {libraryId}    start a scan (changes nothing)
 // POST /api/admin/tidy/:id/apply {items}   fix the picked books (tidy_items ids)
-// POST /api/admin/tidy/:id/undo            put every fixed book in the run back
+// POST /api/admin/tidy/:id/undo {items?}   put the fixed books back (all of them, or just these)
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { TidyRun, TidyRunResponse } from '@lectern/shared';
@@ -43,9 +43,10 @@ export function tidyRoutes(app: FastifyInstance, tidy: TidyService): void {
 
   app.post('/api/admin/tidy/:id/undo', async (req, reply): Promise<TidyRun | void> => {
     const params = runParams.safeParse(req.params);
-    if (!params.success) return reply.code(400).send({ error: 'Which run?' });
+    const body = z.object({ items: z.array(z.number().int().positive()).max(10_000).optional() }).safeParse(req.body ?? {});
+    if (!params.success || !body.success) return reply.code(400).send({ error: 'Which run?' });
     try {
-      return tidy.startUndo(params.data.id);
+      return tidy.startUndo(params.data.id, body.data.items);
     } catch (err) {
       return fail(reply, err);
     }

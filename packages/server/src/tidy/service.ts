@@ -290,13 +290,16 @@ export class TidyService {
 
   // ── 3. Undo ──
 
-  startUndo(runId: number): TidyRun {
+  /** Undo the whole run, or just the given books (tidy_items ids). */
+  startUndo(runId: number, itemIds?: number[]): TidyRun {
     const run = this.runRow(runId);
     if (run.status !== 'ready') throw new TidyError('This run can’t be undone right now.');
     if (this.busy()) throw new TidyError('Tidy up is already working on something. Wait for it to finish.');
     const rows = this.o.db
       .prepare('SELECT * FROM tidy_items WHERE run_id = ? AND applied_at IS NOT NULL AND undone_at IS NULL')
       .all(runId) as ItemRow[];
+    const only = itemIds ? new Set(itemIds) : undefined;
+    if (only) rows.splice(0, rows.length, ...rows.filter((r) => only.has(r.id)));
     if (rows.length === 0) throw new TidyError('Nothing in this run has been fixed, so there’s nothing to undo.');
     this.setRun(runId, { status: 'undoing', message: null });
     this.running = this.undoAll(rows).finally(() => this.setRun(runId, { status: 'ready' }));

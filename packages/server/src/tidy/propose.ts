@@ -71,9 +71,27 @@ export function sameSeries(a: string, b: string): boolean {
 const seriesConflict = (a: SeriesPosition[], b: SeriesPosition[]): boolean =>
   a.length > 0 && b.length > 0 && !a.some((x) => b.some((y) => sameSeries(x.name, y.name)));
 
+/**
+ * The book's own name. Audible sometimes titles a book with just its series
+ * ("Monster Girl Defense Force") and puts the real name in the subtitle
+ * ("Skulls and Stones"); then the subtitle, without "Series, Book 2" parts, is
+ * the title. Otherwise the title as it is.
+ */
+export function ownTitle(b: Pick<Book, 'title' | 'subtitle' | 'series'>): string {
+  const seriesNames = (b.series ?? []).map((s) => s.name);
+  const isSeriesName = (text: string) => seriesNames.some((n) => sameSeries(text, n)) || !!seriesFromTitle(text);
+  if (!b.subtitle || !isSeriesName(cleanTitle(b.title))) return b.title;
+  const parts = b.subtitle
+    .replace(/\s*[([].*?[)\]]/g, '')
+    .split(/\s*[:,]\s*|\s[-–]\s/)
+    .map((p) => p.trim())
+    .filter((p) => p && !/^book\s*\d/i.test(p) && !isSeriesName(p) && !/\b(series|saga|trilogy)\b/i.test(p));
+  return parts.length ? parts.join(': ') : b.title;
+}
+
 export function toTidyBook(b: Book): TidyBook {
   return {
-    title: b.title,
+    title: ownTitle(b),
     subtitle: b.subtitle,
     authors: b.authors,
     narrators: b.narrators ?? [],
@@ -192,8 +210,8 @@ const FILLER = new Set(['unabridged', 'abridged', 'book', 'books', 'series', 'sa
  */
 export function losesWords(current: TidyBook, proposed: TidyBook): boolean {
   const kept = new Set([
+    // Only what would actually be written counts: Lectern doesn't write subtitles.
     ...normalizeText(proposed.title).split(' '),
-    ...normalizeText(proposed.subtitle ?? '').split(' '),
     ...[...current.series, ...proposed.series].flatMap((s) => normalizeText(s.name).split(' ')),
   ]);
   return normalizeText(current.title)

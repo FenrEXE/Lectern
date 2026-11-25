@@ -178,7 +178,7 @@ export const api = {
     tidy: () => request<TidyRunResponse>('/api/admin/tidy'),
     tidyScan: (libraryId: string) => post<TidyRun>('/api/admin/tidy/scan', { libraryId }),
     tidyApply: (runId: number, items: number[]) => post<TidyRun>(`/api/admin/tidy/${runId}/apply`, { items }),
-    tidyUndo: (runId: number) => post<TidyRun>(`/api/admin/tidy/${runId}/undo`),
+    tidyUndo: (runId: number, items?: number[]) => post<TidyRun>(`/api/admin/tidy/${runId}/undo`, items ? { items } : {}),
     folders: (path: string) => request<FolderListing>(`/api/admin/folders?${new URLSearchParams({ path })}`),
     /** Will books be hardlinked into this library folder, or copied? */
     hardlinkCheck: (dir: string) =>

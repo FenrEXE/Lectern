@@ -73,6 +73,17 @@ async function apply(): Promise<void> {
   }
 }
 
+/** Undo just one book. */
+async function undoOne(item: TidyItem): Promise<void> {
+  if (!run.value) return;
+  try {
+    await api.admin.tidyUndo(run.value.id, [item.id]);
+    await load();
+  } catch (err) {
+    error.value = (err as Error).message;
+  }
+}
+
 async function undo(): Promise<void> {
   if (!run.value) return;
   confirming.value = undefined;
@@ -182,6 +193,9 @@ onBeforeUnmount(() => clearTimeout(timer));
             </span>
             <span v-if="state(i)" class="tag" :class="{ 'tag--bad': i.error }">{{ state(i) }}</span>
           </label>
+          <button v-if="i.appliedAt && !i.undoneAt" type="button" class="btn btn--quiet undo-one" :disabled="working" @click="undoOne(i)">
+            Undo this book
+          </button>
           <p v-if="i.reason" class="muted small reason">{{ i.reason }}</p>
           <dl class="changes">
             <template v-for="c in i.changes" :key="c.field">
@@ -331,5 +345,10 @@ progress {
   display: flex;
   gap: 8px;
   margin-bottom: 10px;
+}
+.undo-one {
+  min-height: 36px;
+  margin: 6px 0 0 32px;
+  font-size: 13px;
 }
 </style>

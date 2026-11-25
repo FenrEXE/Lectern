@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TidyRunResponse } from '@lectern/shared';
 import { parseAbsItem } from '../src/audiobookshelf/client.js';
-import { chooseBySeries, chooseMatch, cleanTitle, diff, finalProposal, numberFromPath, seriesFromTitle, seriesHint, titleVariants, toTidyBook } from '../src/tidy/propose.js';
+import { ownTitle, chooseBySeries, chooseMatch, cleanTitle, diff, finalProposal, numberFromPath, seriesFromTitle, seriesHint, titleVariants, toTidyBook } from '../src/tidy/propose.js';
 import { metadataFor } from '../src/tidy/service.js';
 import { json } from './fixtures.js';
 import { testApp } from './helpers.js';
@@ -164,6 +164,22 @@ describe('Tidy up', () => {
     expect(found).toMatchObject({ status: 'unsure', seriesDiffers: true });
     expect(found.reason).toMatch(/Goblin Grove/);
     expect(finalProposal(junk, toTidyBook(real), true).series).toEqual([{ name: 'Goblin Grove', number: '1' }]);
+  });
+
+  it('uses the subtitle as the title when Audible’s title is just the series', () => {
+    const mgdf = [{ name: 'Monster Girl Defense Force', number: '2' }];
+    expect(ownTitle({ title: 'Monster Girl Defense Force', subtitle: 'Skulls and Stones', series: mgdf })).toBe('Skulls and Stones');
+    expect(ownTitle({ title: 'Monster Girl Defense Force', subtitle: 'Skulls and Stones: Monster Girl Defense Force, Book 2', series: mgdf })).toBe('Skulls and Stones');
+    // Book 1 really is called that.
+    expect(ownTitle({ title: 'Monster Girl Defense Force', subtitle: 'Monster Girl Defense Force, Book 1', series: [{ name: 'Monster Girl Defense Force', number: '1' }] })).toBe('Monster Girl Defense Force');
+    expect(ownTitle({ title: 'The Final Empire', subtitle: 'Mistborn, Book 1', series: [{ name: 'Mistborn', number: '1' }] })).toBe('The Final Empire');
+
+    const current = { title: 'Monster Girl Defense Force: Skulls and Stones', authors: ['Simon Archer'], narrators: [], series: [], hasCover: true };
+    const audible = { title: 'Monster Girl Defense Force', subtitle: 'Skulls and Stones', authors: ['Simon Archer'], series: mgdf };
+    const proposed = finalProposal(current, toTidyBook(audible));
+    expect(diff(current, proposed).map((c) => `${c.field}: ${c.to}`)).toEqual(['title: Skulls and Stones', 'series: Monster Girl Defense Force #2']);
+    // Even if only the series name came back as a title, the book's name is never dropped.
+    expect(diff(current, finalProposal(current, { ...toTidyBook(audible), title: 'Monster Girl Defense Force' })).map((c) => c.field)).toEqual(['series']);
   });
 
   it('never takes a book from a different series, and keeps existing narrators', () => {
