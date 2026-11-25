@@ -151,6 +151,21 @@ describe('Tidy up', () => {
     ]);
   });
 
+  it('offers Audible’s series when the title clearly matches but the series names differ', () => {
+    const t = (title: string, series: Array<{ name: string; number?: string }>) => ({ title, authors: ['A. Writer'], narrators: [], series, hasCover: true });
+    // Same series written longer: just the same series.
+    const longer = t('Solar Dragons Need Love, Too!, Book 4', [{ name: 'Solar Dragons', number: '4' }]);
+    const audible = { title: 'Solar Dragons Need Love, Too! 4', authors: ['A. Writer'], series: [{ name: 'Solar Dragons Need Love, Too!', number: '4' }] };
+    expect(chooseMatch(longer, [audible]).status).toBe('fix');
+    // A truly different series name, same clear title: "need a look", and fixing it uses Audible's series.
+    const junk = t('Backyard Goblins', [{ name: 'Harem Lit Favourites', number: '7' }]);
+    const real = { title: 'Backyard Goblins', authors: ['A. Writer'], series: [{ name: 'Goblin Grove', number: '1' }] };
+    const found = chooseMatch(junk, [real], { name: 'Harem Lit Favourites', number: '7' });
+    expect(found).toMatchObject({ status: 'unsure', seriesDiffers: true });
+    expect(found.reason).toMatch(/Goblin Grove/);
+    expect(finalProposal(junk, toTidyBook(real), true).series).toEqual([{ name: 'Goblin Grove', number: '1' }]);
+  });
+
   it('never takes a book from a different series, and keeps existing narrators', () => {
     const current = {
       title: 'Book 08 - A Warm Place 8 - A Warm Place Series',
@@ -161,7 +176,7 @@ describe('Tidy up', () => {
     };
     expect(cleanTitle(current.title)).toBe('A Warm Place 8');
     const wrong = { title: 'Lakeside Cougars 2', subtitle: 'A Warm Place', authors: ['Misty Vixen'], series: [{ name: 'Lakeside Cougars', number: '2' }] };
-    expect(chooseMatch(current, [wrong])).toMatchObject({ status: 'not-found', reason: expect.stringMatching(/different series/) });
+    expect(chooseMatch(current, [wrong]).status).toBe('not-found');
     const right = { title: 'A Warm Place 8', authors: ['Misty Vixen'], series: [{ name: 'A Warm Place', number: '8' }] };
     const proposed = finalProposal(current, { ...current, title: right.title, narrators: ['Jessica Threet'], series: right.series });
     expect(diff(current, proposed).map((c) => c.field)).toEqual(['title']); // narrators kept

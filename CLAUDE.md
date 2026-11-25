@@ -151,8 +151,11 @@ docker build -t lectern .
   match is "needs a look" and not ticked. Audible is asked one book at a time,
   answers cached 30 days. Moving folders is a later step.
   Series are never renamed for spelling ("Paradox" = "Paradox Series":
-  `seriesKey`), only added when missing or their number corrected; a match
-  from a different series is never used; narrators are only filled when
+  `seriesKey`, `sameSeries`, which also accepts a name with words added),
+  only added when missing or their number corrected. A match from a different
+  series is only used when its own title clearly matches; then it's "needs a
+  look" and fixing it takes Audible's series (Audiobookshelf's may be the
+  wrong one). Narrators are only filled when
   missing. Titles that are just "Series, Book 3" are looked up by series and
   number (`seriesFromTitle`, `chooseBySeries`). A title is never shortened by
   dropping real words ("X: Skulls and Stones" → "X" is refused: `losesWords`);

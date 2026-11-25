@@ -54,8 +54,22 @@ export function seriesKey(name: string): string {
 }
 
 /** Both have a series, and they're different series (not just spelled differently). */
+/**
+ * The same series, however each source writes it: equal keys, or one name
+ * being the other with words added ("Solar Dragons" / "Solar Dragons Need
+ * Love, Too!").
+ */
+export function sameSeries(a: string, b: string): boolean {
+  const x = seriesKey(a);
+  const y = seriesKey(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  return short.length >= 5 && (long.startsWith(`${short} `) || long.endsWith(` ${short}`));
+}
+
 const seriesConflict = (a: SeriesPosition[], b: SeriesPosition[]): boolean =>
-  a.length > 0 && b.length > 0 && !a.some((x) => b.some((y) => seriesKey(x.name) === seriesKey(y.name)));
+  a.length > 0 && b.length > 0 && !a.some((x) => b.some((y) => sameSeries(x.name, y.name)));
 
 export function toTidyBook(b: Book): TidyBook {
   return {
@@ -86,41 +100,75 @@ const authorsMatch = (current: TidyBook, found: Book): boolean =>
   current.authors.length === 0 || current.authors.some((a) => found.authors.some((b) => sameAuthor(a, b) || titleSimilarity(a, b) >= 0.85));
 
 /** The best of several candidates, and how sure Lectern is. */
+export interface MatchResult {
+  book?: Book;
+  status: TidyStatus;
+  reason?: string;
+  /** Audible puts the book in a different series than Audiobookshelf does. */
+  seriesDiffers?: boolean;
+}
+
 export function chooseMatch(
   current: TidyBook,
   candidates: Book[],
-  /** The book's number in its series, if known (from Audiobookshelf, the title or the folder). */
-  number?: string,
-): { book?: Book; status: TidyStatus; reason?: string } {
-  number ??= current.series.find((s) => s.number)?.number ?? seriesFromTitle(current.title)?.number;
-  let best: { book: Book; title: number; author: boolean } | undefined;
-  // A candidate from a different series is another book, whatever its title;
-  // so is one with a different number in the series (book 1 isn't book 2).
-  const usable = candidates.filter(
-    (b) => !seriesConflict(current.series, b.series ?? []) && !(number && (b.series ?? []).some((s) => s.number) && !(b.series ?? []).some((s) => sameNumber(s.number, number))),
-  );
-  for (const book of usable) {
-    const title = titleScore(current, book);
-    const author = authorsMatch(current, book);
-    const better = !best || Number(author) - Number(best.author) > 0 || (author === best.author && title > best.title);
-    if (better) best = { book, title, author };
+  /** The book's place in a series, if known (from Audiobookshelf, the title or the folder). */
+  position?: Partial<SeriesPosition> | string,
+): MatchResult {
+  const hint: Partial<SeriesPosition> | undefined =
+    typeof position === 'string' ? { number: position } : position ?? current.series.find((s) => s.number) ?? seriesFromTitle(current.title);
+
+  // Another number in the same series is another book (book 1 isn't book 2).
+  const wrongNumber = (b: Book): boolean => {
+    if (!hint?.number) return false;
+    const theirs = (b.series ?? []).filter((s) => s.number && (!hint.name || sameSeries(s.name, hint.name)));
+    return theirs.length > 0 && !theirs.some((s) => sameNumber(s.number, hint.number));
+  };
+  // How well the candidate's own title (not its subtitle or series) matches.
+  const ownTitle = (b: Book): number => Math.max(...titleVariants(current.title).map((t) => titleSimilarity(t, b.title)));
+
+  const scored = candidates
+    .filter((b) => !wrongNumber(b))
+    .map((book) => ({
+      book,
+      title: titleScore(current, book),
+      author: authorsMatch(current, book),
+      conflict: seriesConflict(current.series, book.series ?? []),
+      own: ownTitle(book),
+    }))
+    // A different series is fine only when the title itself clearly matches:
+    // Audiobookshelf's series may be the thing that's wrong. Otherwise it's
+    // another book ("A Warm Place 8" isn't "Lakeside Cougars 2").
+    .filter((c) => !c.conflict || c.own >= CLEAR_TITLE);
+
+  let best: (typeof scored)[number] | undefined;
+  for (const c of scored) {
+    const rank = (x: typeof c) => [Number(x.author), Number(!x.conflict), x.title];
+    const [a1, a2, a3] = rank(c);
+    const [b1, b2, b3] = best ? rank(best) : [-1, -1, -1];
+    if (a1! > b1! || (a1 === b1 && (a2! > b2! || (a2 === b2 && a3! > b3!)))) best = c;
   }
-  if (!best || best.title < LIKELY_TITLE) {
-    const reason =
-      usable.length < candidates.length
-        ? 'Audible’s closest matches are in a different series.'
-        : 'No book with a close enough title on Audible.';
-    return { status: 'not-found', reason };
-  }
+  if (!best || best.title < LIKELY_TITLE) return { status: 'not-found', reason: 'No book with a close enough title on Audible.' };
   if (!best.author) return { book: best.book, status: 'unsure', reason: 'Title matches, but the author is different.' };
+  if (best.conflict) {
+    return {
+      book: best.book,
+      status: 'unsure',
+      reason: `Audible has this in “${best.book.series?.[0]?.name}”, Audiobookshelf in “${current.series[0]?.name}”. Fixing it uses Audible’s series.`,
+      seriesDiffers: true,
+    };
+  }
   if (best.title < CLEAR_TITLE) return { book: best.book, status: 'unsure', reason: 'Probably this book, but the title differs a little.' };
   return { book: best.book, status: 'fix' };
 }
 
 /** A book found by the ASIN Audiobookshelf already had: trusted, unless it's plainly another book. */
-export function checkAsinMatch(current: TidyBook, found: Book): { status: TidyStatus; reason?: string } {
+export function checkAsinMatch(current: TidyBook, found: Book): Omit<MatchResult, 'book'> {
   if (seriesConflict(current.series, found.series ?? [])) {
-    return { status: 'unsure', reason: 'The ASIN in Audiobookshelf points to a book in a different series.' };
+    return {
+      status: 'unsure',
+      reason: `Audible has this ASIN in “${found.series?.[0]?.name}”, Audiobookshelf in “${current.series[0]?.name}”. Fixing it uses Audible’s series.`,
+      seriesDiffers: true,
+    };
   }
   if (titleScore(current, found) >= 0.5 || authorsMatch(current, found)) return { status: 'fix' };
   return { status: 'unsure', reason: 'The ASIN in Audiobookshelf points to a book with a different title and author.' };
@@ -190,7 +238,7 @@ export function seriesChange(current: SeriesPosition[], proposed: SeriesPosition
   if (proposed.length === 0) return undefined;
   if (current.length === 0) return proposed;
   for (const [i, mine] of current.entries()) {
-    const theirs = proposed.find((p) => seriesKey(p.name) === seriesKey(mine.name));
+    const theirs = proposed.find((p) => sameSeries(p.name, mine.name));
     if (!theirs) continue;
     if (!theirs.number || sameNumber(mine.number, theirs.number)) return undefined;
     return current.map((s, j) => (j === i ? { name: mine.name, number: theirs.number } : s));
@@ -202,7 +250,8 @@ export function seriesChange(current: SeriesPosition[], proposed: SeriesPosition
  * The match, adjusted to what would actually be written: its series replaced
  * by the result of seriesChange (so the name already in Audiobookshelf is kept).
  */
-export function finalProposal(current: TidyBook, proposed: TidyBook): TidyBook {
+export function finalProposal(current: TidyBook, proposed: TidyBook, replaceSeries = false): TidyBook {
+  if (replaceSeries && proposed.series.length) return proposed;
   return { ...proposed, series: seriesChange(current.series, proposed.series) ?? current.series };
 }
 
@@ -231,7 +280,7 @@ export function seriesHint(book: TidyBook): SeriesPosition | undefined {
  */
 export function chooseBySeries(current: TidyBook, wanted: SeriesPosition, candidates: Book[]): { book?: Book; status: TidyStatus; reason?: string } {
   const matches = candidates.filter((b) =>
-    (b.series ?? []).some((s) => seriesKey(s.name) === seriesKey(wanted.name) && sameNumber(s.number, wanted.number)),
+    (b.series ?? []).some((s) => sameSeries(s.name, wanted.name) && sameNumber(s.number, wanted.number)),
   );
   if (matches.length === 0) return { status: 'not-found', reason: `Couldn’t find ${wanted.name} #${wanted.number} on Audible.` };
   const byAuthor = matches.find((b) => authorsMatch(current, b));

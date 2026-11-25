@@ -17,13 +17,15 @@ import { readConfig, type ConfigSource } from '../config.js';
 import type { Db } from '../db.js';
 import type { FetchFn } from '../http.js';
 import { audibleByAsin, searchAudibleBy, type AudibleBook } from '../metadata/audible.js';
-import { checkAsinMatch, chooseBySeries, chooseMatch, diff, finalProposal, numberFromPath, seriesFromTitle, seriesHint, titleVariants, toTidyBook } from './propose.js';
+import { checkAsinMatch, chooseBySeries, chooseMatch, type MatchResult, diff, finalProposal, numberFromPath, seriesFromTitle, seriesHint, titleVariants, toTidyBook } from './propose.js';
 
 const KEEP_LOOKUPS = 30 * 24 * HOUR;
 const PAUSE_MS = 250;
 const PAGE_SIZE = 100;
 
 export class TidyError extends Error {}
+
+type LookUp = MatchResult & { book?: AudibleBook };
 
 interface RunRow {
   id: number;
@@ -184,7 +186,7 @@ export class TidyService {
             status = found.status;
             reason = found.reason;
             if (found.book) {
-              proposed = finalProposal(item.book, toTidyBook(found.book));
+              proposed = finalProposal(item.book, toTidyBook(found.book), found.seriesDiffers);
               changes = diff(item.book, proposed);
               if (changes.length === 0) status = 'ok';
             }
@@ -206,7 +208,7 @@ export class TidyService {
     book: TidyBook,
     language: string,
     numberInFolder?: string,
-  ): Promise<{ book?: AudibleBook; status: TidyStatus; reason?: string }> {
+  ): Promise<LookUp> {
     const region = readConfig(this.o.config).audibleRegion;
     if (book.asin) {
       const byAsin = await cached(this.o.db, `tidy:asin:${region}:${book.asin}`, KEEP_LOOKUPS, async () => {
@@ -226,13 +228,13 @@ export class TidyService {
       });
       for (const b of found) if (!candidates.some((c) => c.asin === b.asin)) candidates.push(b);
     }
-    const number = book.series.find((s) => s.number)?.number ?? seriesFromTitle(book.title)?.number ?? numberInFolder;
+    const position = book.series.find((s) => s.number) ?? seriesFromTitle(book.title) ?? (numberInFolder ? { number: numberInFolder } : undefined);
     // Prefer editions in the admin's language; only look at others if there are none.
     const preferLanguage = (list: AudibleBook[]) => {
       const inLanguage = list.filter((c) => languageMatches(c.language, language));
       return inLanguage.length ? inLanguage : list;
     };
-    const byTitle = chooseMatch(book, preferLanguage(candidates), number) as { book?: AudibleBook; status: TidyStatus; reason?: string };
+    const byTitle = chooseMatch(book, preferLanguage(candidates), position) as LookUp;
     if (byTitle.status !== 'not-found') return byTitle;
 
     // Titles like "Country Mage, Book 03" aren't real titles: look the book up
@@ -243,7 +245,7 @@ export class TidyService {
       await this.sleep(PAUSE_MS);
       return searchAudibleBy(this.o.fetch, { keywords: hint.name, author }, region, 50);
     });
-    const bySeries = chooseBySeries(book, hint, preferLanguage(inSeries)) as { book?: AudibleBook; status: TidyStatus; reason?: string };
+    const bySeries = chooseBySeries(book, hint, preferLanguage(inSeries)) as LookUp;
     return bySeries.status === 'not-found' ? byTitle : bySeries;
   }
 
