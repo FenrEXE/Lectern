@@ -154,7 +154,9 @@ docker build -t lectern .
   `seriesKey`), only added when missing or their number corrected; a match
   from a different series is never used; narrators are only filled when
   missing. Titles that are just "Series, Book 3" are looked up by series and
-  number (`seriesFromTitle`, `chooseBySeries`).
+  number (`seriesFromTitle`, `chooseBySeries`). A title is never shortened by
+  dropping real words ("X: Skulls and Stones" → "X" is refused: `losesWords`);
+  only edition notes and series filler may go.
 
 ### Profiles, sign-in and settings
 - Every `/api` route needs a signed-in profile except health, sign-in and

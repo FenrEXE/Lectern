@@ -120,10 +120,30 @@ const sameNumber = (a?: string, b?: string): boolean =>
 const sameNames = (a: string[], b: string[]): boolean =>
   a.map(authorKey).sort().join('|') === b.map(authorKey).sort().join('|');
 
+// Words a title can drop without losing anything: edition notes and series filler.
+const FILLER = new Set(['unabridged', 'abridged', 'book', 'books', 'series', 'saga', 'volume', 'vol', 'part', 'edition', 'novel', 'a', 'an', 'the', 'and', 'of']);
+
+/**
+ * Would the new title throw away real words? "Monster Girl Defense Force:
+ * Skulls and Stones" → "Monster Girl Defense Force" drops the book's own name,
+ * so the title is left alone. Dropping "(Unabridged)", "Paradox Series, Book 2"
+ * or a repeated series name is fine.
+ */
+export function losesWords(current: TidyBook, proposed: TidyBook): boolean {
+  const kept = new Set([
+    ...normalizeText(proposed.title).split(' '),
+    ...normalizeText(proposed.subtitle ?? '').split(' '),
+    ...[...current.series, ...proposed.series].flatMap((s) => normalizeText(s.name).split(' ')),
+  ]);
+  return normalizeText(current.title)
+    .split(' ')
+    .some((w) => w && !kept.has(w) && !FILLER.has(w) && !/^\d+$/.test(w));
+}
+
 /** What would change, field by field. Only fields the match actually has. */
 export function diff(current: TidyBook, proposed: TidyBook): TidyChange[] {
   const changes: TidyChange[] = [];
-  if (proposed.title && normalizeText(proposed.title) !== normalizeText(current.title)) {
+  if (proposed.title && normalizeText(proposed.title) !== normalizeText(current.title) && !losesWords(current, proposed)) {
     changes.push({ field: 'title', from: current.title || '—', to: proposed.title });
   }
   if (proposed.authors.length && !sameNames(current.authors, proposed.authors)) {

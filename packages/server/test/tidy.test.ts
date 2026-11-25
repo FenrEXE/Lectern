@@ -122,6 +122,15 @@ describe('Tidy up', () => {
     expect(chooseBySeries(current, { name: 'Country Mage', number: '9' }, audible).status).toBe('not-found');
   });
 
+  it('never shortens a title by dropping the book’s own name', () => {
+    const t = (title: string, series: Array<{ name: string; number?: string }> = []) => ({ title, authors: ['Simon Archer'], narrators: [], series, hasCover: true });
+    const mgdf = [{ name: 'Monster Girl Defense Force', number: '2' }];
+    expect(diff(t('Monster Girl Defense Force: Skulls and Stones', mgdf), t('Monster Girl Defense Force', mgdf))).toEqual([]);
+    expect(diff(t('Power Leveling: Level Up!, Book 4'), t('Level Up! 4')).map((c) => c.field)).toEqual([]);
+    // Only filler goes: fine.
+    expect(diff(t('Monster Girl Defense Force: Monster Girl Defense Force, Book 1', mgdf), t('Monster Girl Defense Force', mgdf)).map((c) => c.field)).toEqual(['title']);
+  });
+
   it('never takes a book from a different series, and keeps existing narrators', () => {
     const current = {
       title: 'Book 08 - A Warm Place 8 - A Warm Place Series',
