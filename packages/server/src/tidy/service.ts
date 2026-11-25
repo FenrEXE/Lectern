@@ -17,7 +17,7 @@ import { readConfig, type ConfigSource } from '../config.js';
 import type { Db } from '../db.js';
 import type { FetchFn } from '../http.js';
 import { audibleByAsin, searchAudibleBy, type AudibleBook } from '../metadata/audible.js';
-import { checkAsinMatch, chooseMatch, cleanTitle, diff, toTidyBook } from './propose.js';
+import { checkAsinMatch, chooseMatch, cleanTitle, diff, finalProposal, toTidyBook } from './propose.js';
 
 const KEEP_LOOKUPS = 30 * 24 * HOUR;
 const PAUSE_MS = 250;
@@ -184,7 +184,7 @@ export class TidyService {
             status = found.status;
             reason = found.reason;
             if (found.book) {
-              proposed = toTidyBook(found.book);
+              proposed = finalProposal(item.book, toTidyBook(found.book));
               changes = diff(item.book, proposed);
               if (changes.length === 0) status = 'ok';
             }

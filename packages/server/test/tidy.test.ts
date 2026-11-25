@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TidyRunResponse } from '@lectern/shared';
 import { parseAbsItem } from '../src/audiobookshelf/client.js';
-import { chooseMatch, diff } from '../src/tidy/propose.js';
+import { chooseMatch, cleanTitle, diff, finalProposal } from '../src/tidy/propose.js';
 import { metadataFor } from '../src/tidy/service.js';
 import { json } from './fixtures.js';
 import { testApp } from './helpers.js';
@@ -78,6 +78,46 @@ describe('Tidy up', () => {
     expect(diff(current, proposed).map((c) => c.field)).toEqual(['series']);
     // "01" and "1" are the same number.
     expect(diff({ ...current, series: [{ name: 'Mistborn', number: '01' }] }, proposed)).toEqual([]);
+  });
+
+  it('keeps series names as they are, and only fixes a missing or wrong number', () => {
+    const tidy = (title: string, series: Array<{ name: string; number?: string }>, narrators: string[] = []) => ({
+      title,
+      authors: ['Rachel Bach'],
+      narrators,
+      series,
+      hasCover: true,
+    });
+    // Audible says "Paradox Series #2"; Audiobookshelf has "Paradox": same series.
+    const current = tidy("Honor's Knight: Paradox Series, Book 2 (Unabridged)", [{ name: 'Paradox' }]);
+    const audible = { title: "Honor's Knight", authors: ['Rachel Bach'], series: [{ name: 'Paradox Series', number: '2' }] };
+    const match = chooseMatch(current, [audible]);
+    expect(match.status).toBe('fix');
+    const proposed = finalProposal(current, { ...tidy("Honor's Knight", audible.series), narrators: ['Emily Ellet'] });
+    expect(diff(current, proposed)).toEqual([
+      { field: 'title', from: "Honor's Knight: Paradox Series, Book 2 (Unabridged)", to: "Honor's Knight" },
+      { field: 'series', from: 'Paradox', to: 'Paradox #2' },
+      { field: 'narrators', from: '—', to: 'Emily Ellet' },
+    ]);
+    // "A Warm Place" vs "Warm Place", same number: nothing to change.
+    const seven = tidy('A Warm Place 7', [{ name: 'A Warm Place', number: '7' }]);
+    expect(diff(seven, finalProposal(seven, tidy('A Warm Place 7', [{ name: 'Warm Place', number: '7' }])))).toEqual([]);
+  });
+
+  it('never takes a book from a different series, and keeps existing narrators', () => {
+    const current = {
+      title: 'Book 08 - A Warm Place 8 - A Warm Place Series',
+      authors: ['Misty Vixen'],
+      narrators: ['Gabriel Michael', 'Katana Jones'],
+      series: [{ name: 'A Warm Place', number: '8' }],
+      hasCover: true,
+    };
+    expect(cleanTitle(current.title)).toBe('A Warm Place 8');
+    const wrong = { title: 'Lakeside Cougars 2', subtitle: 'A Warm Place', authors: ['Misty Vixen'], series: [{ name: 'Lakeside Cougars', number: '2' }] };
+    expect(chooseMatch(current, [wrong])).toMatchObject({ status: 'not-found', reason: expect.stringMatching(/different series/) });
+    const right = { title: 'A Warm Place 8', authors: ['Misty Vixen'], series: [{ name: 'A Warm Place', number: '8' }] };
+    const proposed = finalProposal(current, { ...current, title: right.title, narrators: ['Jessica Threet'], series: right.series });
+    expect(diff(current, proposed).map((c) => c.field)).toEqual(['title']); // narrators kept
   });
 
   it('calls a match with a different author "unsure", not "fix"', () => {

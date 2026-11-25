@@ -84,6 +84,17 @@ async function undo(): Promise<void> {
   }
 }
 
+/** Tick or untick every book in a group that can still be fixed. */
+function setAll(items: TidyItem[], on: boolean): void {
+  const next = new Set(selected.value);
+  for (const i of items) {
+    if (i.appliedAt && !i.undoneAt) continue;
+    if (on) next.add(i.id);
+    else next.delete(i.id);
+  }
+  selected.value = next;
+}
+
 function toggle(item: TidyItem): void {
   const next = new Set(selected.value);
   if (next.has(item.id)) next.delete(item.id);
@@ -152,6 +163,10 @@ onBeforeUnmount(() => clearTimeout(timer));
     ]" v-show="group.items.length" :key="group.title" class="panel">
       <h3>{{ group.title }} <span class="count">{{ group.items.length }}</span></h3>
       <p class="panel-lead">{{ group.hint }}</p>
+      <div class="bulk">
+        <button type="button" class="btn btn--quiet" :disabled="working" @click="setAll(group.items, true)">Tick all</button>
+        <button type="button" class="btn btn--quiet" :disabled="working" @click="setAll(group.items, false)">Untick all</button>
+      </div>
       <ul class="items">
         <li v-for="i in group.items" :key="i.id" class="item">
           <label class="item__head">
@@ -312,4 +327,9 @@ progress {
 }
 
 .actions p { flex-basis: 100%; margin: 0; }
+.bulk {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
 </style>

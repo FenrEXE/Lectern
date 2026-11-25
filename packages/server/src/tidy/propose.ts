@@ -3,7 +3,13 @@
 //
 // Rules that keep this safe:
 //  - only ever *set* a field from the matched book; never blank one out;
-//  - the year is only filled in when it's missing;
+//  - the year and narrators are only filled in when they're missing (a
+//    different narrator usually means a different recording, not a mistake);
+//  - a series is never renamed just because Audible spells it differently
+//    ("Paradox" vs "Paradox Series", "A Warm Place" vs "Warm Place"): that
+//    would split a series in Audiobookshelf. Only a missing series is added,
+//    or a wrong book number corrected;
+//  - a match whose series is a different one entirely isn't trusted;
 //  - a cover is only added when the book has none (an existing cover is left alone);
 //  - a match is "fix" only when it's clearly the same book; anything less
 //    certain is "unsure" and isn't selected unless the admin ticks it.
@@ -22,8 +28,34 @@ import {
 const CLEAR_TITLE = 0.9;
 const LIKELY_TITLE = 0.7;
 
-/** Title without "(Unabridged)", "[Dramatized]" and similar extras. */
-export const cleanTitle = (title: string): string => title.replace(/\s*[([].*?[)\]]/g, '').trim() || title;
+/**
+ * The title without extras, for looking it up: "(Unabridged)", "[Dramatized]",
+ * a leading "Book 08 -", and a trailing ": Paradox Series, Book 2".
+ */
+export const cleanTitle = (title: string): string =>
+  title
+    .replace(/\s*[([].*?[)\]]/g, '')
+    .replace(/^\s*book\s*\d+(\.\d+)?\s*[-–:.]\s*/i, '')
+    .replace(/\s*[-–:,]\s*[^-–:,]*\b(series|saga|trilogy|duology)\b.*$/i, '')
+    .replace(/\s*[,:]\s*book\s*\d+.*$/i, '')
+    .trim() || title;
+
+/**
+ * A series name with the parts that vary between sources removed, so
+ * "Paradox", "Paradox Series" and "The Paradox Saga" all match, as do
+ * "A Warm Place" and "Warm Place".
+ */
+export function seriesKey(name: string): string {
+  return normalizeText(name)
+    .replace(/^(the|a|an) /, '')
+    .replace(/\b(series|saga|trilogy|duology|books|novels|collection)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Both have a series, and they're different series (not just spelled differently). */
+const seriesConflict = (a: SeriesPosition[], b: SeriesPosition[]): boolean =>
+  a.length > 0 && b.length > 0 && !a.some((x) => b.some((y) => seriesKey(x.name) === seriesKey(y.name)));
 
 export function toTidyBook(b: Book): TidyBook {
   return {
@@ -52,13 +84,21 @@ const authorsMatch = (current: TidyBook, found: Book): boolean =>
 /** The best of several candidates, and how sure Lectern is. */
 export function chooseMatch(current: TidyBook, candidates: Book[]): { book?: Book; status: TidyStatus; reason?: string } {
   let best: { book: Book; title: number; author: boolean } | undefined;
-  for (const book of candidates) {
+  // A candidate from a different series is another book, whatever its title.
+  const usable = candidates.filter((b) => !seriesConflict(current.series, b.series ?? []));
+  for (const book of usable) {
     const title = titleScore(current, book);
     const author = authorsMatch(current, book);
     const better = !best || Number(author) - Number(best.author) > 0 || (author === best.author && title > best.title);
     if (better) best = { book, title, author };
   }
-  if (!best || best.title < LIKELY_TITLE) return { status: 'not-found', reason: 'No book with a close enough title on Audible.' };
+  if (!best || best.title < LIKELY_TITLE) {
+    const reason =
+      usable.length < candidates.length
+        ? 'Audible’s closest matches are in a different series.'
+        : 'No book with a close enough title on Audible.';
+    return { status: 'not-found', reason };
+  }
   if (!best.author) return { book: best.book, status: 'unsure', reason: 'Title matches, but the author is different.' };
   if (best.title < CLEAR_TITLE) return { book: best.book, status: 'unsure', reason: 'Probably this book, but the title differs a little.' };
   return { book: best.book, status: 'fix' };
@@ -66,6 +106,9 @@ export function chooseMatch(current: TidyBook, candidates: Book[]): { book?: Boo
 
 /** A book found by the ASIN Audiobookshelf already had: trusted, unless it's plainly another book. */
 export function checkAsinMatch(current: TidyBook, found: Book): { status: TidyStatus; reason?: string } {
+  if (seriesConflict(current.series, found.series ?? [])) {
+    return { status: 'unsure', reason: 'The ASIN in Audiobookshelf points to a book in a different series.' };
+  }
   if (titleScore(current, found) >= 0.5 || authorsMatch(current, found)) return { status: 'fix' };
   return { status: 'unsure', reason: 'The ASIN in Audiobookshelf points to a book with a different title and author.' };
 }
@@ -74,8 +117,6 @@ const seriesText = (s: SeriesPosition[]): string => s.map((x) => (x.number ? `${
 const listText = (names: string[]): string => names.join(', ') || '—';
 const sameNumber = (a?: string, b?: string): boolean =>
   (a === undefined && b === undefined) || (a !== undefined && b !== undefined && Number(a) === Number(b) && !Number.isNaN(Number(a))) || a === b;
-const sameSeries = (a: SeriesPosition[], b: SeriesPosition[]): boolean =>
-  !!a[0] && !!b[0] && normalizeText(a[0].name) === normalizeText(b[0].name) && sameNumber(a[0].number, b[0].number);
 const sameNames = (a: string[], b: string[]): boolean =>
   a.map(authorKey).sort().join('|') === b.map(authorKey).sort().join('|');
 
@@ -88,11 +129,10 @@ export function diff(current: TidyBook, proposed: TidyBook): TidyChange[] {
   if (proposed.authors.length && !sameNames(current.authors, proposed.authors)) {
     changes.push({ field: 'authors', from: listText(current.authors), to: listText(proposed.authors) });
   }
-  if (proposed.series.length && !sameSeries(current.series, proposed.series)) {
-    changes.push({ field: 'series', from: seriesText(current.series), to: seriesText(proposed.series) });
-  }
-  if (proposed.narrators.length && !sameNames(current.narrators, proposed.narrators)) {
-    changes.push({ field: 'narrators', from: listText(current.narrators), to: listText(proposed.narrators) });
+  const series = seriesChange(current.series, proposed.series);
+  if (series) changes.push({ field: 'series', from: seriesText(current.series), to: seriesText(series) });
+  if (proposed.narrators.length && current.narrators.length === 0) {
+    changes.push({ field: 'narrators', from: '—', to: listText(proposed.narrators) });
   }
   if (proposed.asin && proposed.asin !== current.asin) {
     changes.push({ field: 'asin', from: current.asin ?? '—', to: proposed.asin });
@@ -104,4 +144,31 @@ export function diff(current: TidyBook, proposed: TidyBook): TidyChange[] {
     changes.push({ field: 'cover', from: 'none', to: 'from Audible' });
   }
   return changes;
+}
+
+/**
+ * The series a book should end up with, or undefined for "leave it".
+ *  - no series yet: take the match's;
+ *  - the same series (however it's spelled): keep the name as it is in
+ *    Audiobookshelf, and only correct the book number;
+ *  - a different series: leave it (the match is probably another book).
+ */
+export function seriesChange(current: SeriesPosition[], proposed: SeriesPosition[]): SeriesPosition[] | undefined {
+  if (proposed.length === 0) return undefined;
+  if (current.length === 0) return proposed;
+  for (const [i, mine] of current.entries()) {
+    const theirs = proposed.find((p) => seriesKey(p.name) === seriesKey(mine.name));
+    if (!theirs) continue;
+    if (!theirs.number || sameNumber(mine.number, theirs.number)) return undefined;
+    return current.map((s, j) => (j === i ? { name: mine.name, number: theirs.number } : s));
+  }
+  return undefined;
+}
+
+/**
+ * The match, adjusted to what would actually be written: its series replaced
+ * by the result of seriesChange (so the name already in Audiobookshelf is kept).
+ */
+export function finalProposal(current: TidyBook, proposed: TidyBook): TidyBook {
+  return { ...proposed, series: seriesChange(current.series, proposed.series) ?? current.series };
 }
