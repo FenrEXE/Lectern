@@ -116,8 +116,8 @@ export class RequestService {
 
   /**
    * The qBittorrent category for a request, so each person's downloads are easy
-   * to tell apart in qBittorrent: the profile's name for audiobooks ("Fenr"),
-   * and the name plus "-Ebook" for ebooks ("Fenr-Ebook"). Requests without a
+   * to tell apart in qBittorrent: the profile's name for audiobooks ("Sam"),
+   * and the name plus "-Ebook" for ebooks ("Sam-Ebook"). Requests without a
    * profile use QB_CATEGORY.
    */
   categoryFor(userId: number | null | undefined, kind: MediaKind): string {
