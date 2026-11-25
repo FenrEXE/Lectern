@@ -316,3 +316,70 @@ export interface OnMamResponse {
   /** The book ids MAM has, each with its torrents (best first). Missing ids: not found. */
   found: Record<string, MamTorrent[]>;
 }
+
+// ── Tidy up (admin): fixing details of books already in Audiobookshelf ──
+
+/** The details Tidy up compares and can fix. */
+export interface TidyBook {
+  title: string;
+  subtitle?: string;
+  authors: string[];
+  narrators: string[];
+  series: SeriesPosition[];
+  asin?: string;
+  isbn?: string;
+  publishedYear?: number;
+  hasCover: boolean;
+  coverUrl?: string;
+}
+
+export type TidyField = 'title' | 'subtitle' | 'authors' | 'narrators' | 'series' | 'asin' | 'publishedYear' | 'cover';
+
+/** One suggested change, ready to show: "Series: Mistborn #1 → Mistborn #2". */
+export interface TidyChange {
+  field: TidyField;
+  from: string;
+  to: string;
+}
+
+/**
+ * fix: confident (found by its ASIN, or title and author match closely).
+ * unsure: probably the right book, but check it ("needs a look").
+ * ok: already right. not-found: no confident match. error: couldn't check.
+ */
+export type TidyStatus = 'fix' | 'unsure' | 'ok' | 'not-found' | 'error';
+
+export interface TidyItem {
+  id: number;
+  itemId: string;
+  /** Folder, relative to the library, for recognising the book. */
+  path?: string;
+  status: TidyStatus;
+  reason?: string;
+  current: TidyBook;
+  proposed?: TidyBook;
+  changes: TidyChange[];
+  appliedAt?: string;
+  undoneAt?: string;
+  error?: string;
+}
+
+export type TidyRunStatus = 'scanning' | 'ready' | 'applying' | 'undoing' | 'failed';
+
+export interface TidyRun {
+  id: number;
+  libraryId: string;
+  libraryName: string;
+  status: TidyRunStatus;
+  total: number;
+  scanned: number;
+  message?: string;
+  createdAt: string;
+  counts: Record<TidyStatus, number>;
+  applied: number;
+}
+
+export interface TidyRunResponse {
+  run: TidyRun | null;
+  items: TidyItem[];
+}

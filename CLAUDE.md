@@ -139,6 +139,14 @@ docker build -t lectern .
     ebooks), then triggers a scan.
 - Use hardlinks when downloads and libraries share a drive, so seeding keeps
   working and no space is wasted.
+- **Tidy up** (`tidy/`, Settings → Tidy up, admin only) fixes books already in
+  a library: scan (changes nothing) → the admin picks → apply → undo. Details
+  only, through Audiobookshelf's API (title, authors, series and number,
+  narrators, ASIN, a missing year, a missing cover). It never moves or renames
+  files, never blanks a field, never replaces an existing cover or year, and
+  saves each book's "before" so a run can be undone. Anything less than a clear
+  match is "needs a look" and not ticked. Audible is asked one book at a time,
+  answers cached 30 days. Moving folders is a later step.
 
 ### Profiles, sign-in and settings
 - Every `/api` route needs a signed-in profile except health, sign-in and
@@ -199,7 +207,8 @@ docker build -t lectern .
 6. Profiles with sign-in and separate libraries per person, and an admin
    Settings panel for all connections ✅. Still to do: the ebook side, a watch
    list, new releases
-7. Tidy up: an admin-only tool that fixes existing Audiobookshelf libraries (dry run + undo)
+7. Tidy up: an admin-only tool that fixes existing Audiobookshelf libraries
+   (dry run + undo). Details ✅ (built, to test on a real library); folders later
 8. Polish, a one-command install and docs, then check with MAM before sharing
 
 ## Brand

@@ -22,6 +22,8 @@ import { coverRoutes } from './routes/covers.js';
 import { healthRoutes } from './routes/health.js';
 import { requestRoutes } from './routes/requests.js';
 import { searchRoutes } from './routes/search.js';
+import { tidyRoutes } from './routes/tidy.js';
+import { TidyService } from './tidy/service.js';
 import { MamStatsService } from './mam/stats.js';
 import { mamStatsRoutes } from './routes/mamStats.js';
 import { Settings } from './settings.js';
@@ -47,6 +49,15 @@ export interface AppOptions {
   watchDownloads?: boolean;
   /** Fixed first-run setup code, for tests. Normally random and printed in the log. */
   setupCode?: string;
+  /** Tidy up options, for tests (no pauses). */
+  tidy?: { sleep?: (ms: number) => Promise<void> };
+}
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    /** Exposed so tests can wait for a Tidy up job to finish. */
+    tidy: TidyService;
+  }
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
@@ -77,6 +88,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   browseRoutes(app, { db: opts.db, config, fetch: fetchFn });
   coverRoutes(app, { dataDir: config().dataDir, fetch: fetchFn });
   requestRoutes(app, requests);
+  const tidy = new TidyService({ db: opts.db, abs, fetch: fetchFn, config, log: app.log, ...opts.tidy });
+  tidy.markInterrupted();
+  tidyRoutes(app, tidy);
+  app.decorate('tidy', tidy);
   const mamStats = new MamStatsService({ db: opts.db, mam, log: app.log });
   mamStatsRoutes(app, mamStats);
 

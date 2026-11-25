@@ -3,10 +3,11 @@ import { ref } from 'vue';
 import ConnectionsPanel from '../components/settings/ConnectionsPanel.vue';
 import MyProfile from '../components/settings/MyProfile.vue';
 import ProfilesPanel from '../components/settings/ProfilesPanel.vue';
+import TidyPanel from '../components/settings/TidyPanel.vue';
 import { isAdmin } from '../session';
 
-// Your own profile for everyone; connections and profiles for admins.
-const tab = ref<'me' | 'connections' | 'profiles'>('me');
+// Your own profile for everyone; connections, profiles and Tidy up for admins.
+const tab = ref<'me' | 'connections' | 'profiles' | 'tidy'>('me');
 </script>
 
 <template>
@@ -16,11 +17,13 @@ const tab = ref<'me' | 'connections' | 'profiles'>('me');
     <button type="button" :aria-pressed="tab === 'me'" @click="tab = 'me'">You</button>
     <button type="button" :aria-pressed="tab === 'connections'" @click="tab = 'connections'">Connections</button>
     <button type="button" :aria-pressed="tab === 'profiles'" @click="tab = 'profiles'">Profiles</button>
+    <button type="button" :aria-pressed="tab === 'tidy'" @click="tab = 'tidy'">Tidy up</button>
   </div>
 
   <MyProfile v-if="tab === 'me'" />
   <ConnectionsPanel v-else-if="tab === 'connections'" />
-  <ProfilesPanel v-else />
+  <ProfilesPanel v-else-if="tab === 'profiles'" />
+  <TidyPanel v-else />
 </template>
 
 <style scoped>
@@ -30,6 +33,10 @@ h1 {
 }
 
 .tabs {
+  max-width: 100%;
   margin-bottom: 16px;
+  overflow-x: auto;
 }
+
+.tabs button { white-space: nowrap; }
 </style>

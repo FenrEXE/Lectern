@@ -51,6 +51,20 @@ export async function searchAudibleBy(
   return parseAudible(json);
 }
 
+/** One product by its ASIN, or undefined if Audible doesn't know it. */
+export async function audibleByAsin(fetchFn: FetchFn, asin: string, region = 'us'): Promise<AudibleBook | undefined> {
+  const host = AUDIBLE_HOSTS[region] ?? AUDIBLE_HOSTS.us;
+  const params = new URLSearchParams({ response_groups: 'contributors,product_desc,product_attrs,media,series', image_sizes: '500' });
+  let json: unknown;
+  try {
+    json = await getJson(fetchFn, `https://${host}/1.0/catalog/products/${encodeURIComponent(asin)}?${params}`);
+  } catch {
+    return undefined;
+  }
+  const product = isObj(json) ? json.product : undefined;
+  return parseAudible({ products: product ? [product] : [] })[0];
+}
+
 // ── Parsing ──
 // Audible's answers aren't documented, so every field is checked before use.
 

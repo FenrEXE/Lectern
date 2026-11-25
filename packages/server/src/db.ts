@@ -71,6 +71,37 @@ const migrations: string[] = [
   `
   ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'english';
   `,
+  // 5: Tidy up: a scan of an Audiobookshelf library, and one row per book in it.
+  // "before" keeps what a book looked like before a fix, so a run can be undone.
+  `
+  CREATE TABLE tidy_runs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    library_id   TEXT NOT NULL,
+    library_name TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    total        INTEGER NOT NULL DEFAULT 0,
+    scanned      INTEGER NOT NULL DEFAULT 0,
+    message      TEXT,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+  );
+  CREATE TABLE tidy_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id      INTEGER NOT NULL REFERENCES tidy_runs (id) ON DELETE CASCADE,
+    item_id     TEXT NOT NULL,
+    path        TEXT,
+    status      TEXT NOT NULL,
+    reason      TEXT,
+    current     TEXT NOT NULL,
+    proposed    TEXT,
+    changes     TEXT NOT NULL DEFAULT '[]',
+    before      TEXT,
+    applied_at  TEXT,
+    undone_at   TEXT,
+    error       TEXT
+  );
+  CREATE INDEX tidy_items_run ON tidy_items (run_id, status);
+  `,
 ];
 
 /** Open (or create) the database and bring its schema up to date. */

@@ -137,10 +137,20 @@ When a download finishes, Lectern:
 Books it can't match confidently go to "needs a look" for a one-tap fix.
 
 ## Tidy up (admin only)
-Scans existing Audiobookshelf libraries and re-checks each book with the same
-matching. It shows a preview of the fixes. Once approved, it moves and renames
-folders, writes metadata and rescans. It always does a dry run first and keeps
-an undo log.
+Settings → Tidy up checks an existing Audiobookshelf library book by book
+against Audible (by ASIN when the book has one, otherwise title and author).
+
+1. **Scan** changes nothing. Results: *can be fixed* (clearly the same book,
+   ticked), *need a look* (unticked, with the reason), *already right*, *not found*.
+2. Each book shows its changes, e.g. "Series: — → Mistborn #1".
+3. **Fix selected** updates only the ticked books, through Audiobookshelf's API.
+   Each book's details are saved first.
+4. **Undo this run** puts every fixed book back.
+
+First version: details only (title, author, series and number, narrator, ASIN,
+a missing year or cover). It never touches files. Moving folders into
+`Author/Series/Book N - Title` comes later, once details are proven, because
+moves can reset listening progress.
 
 ## Ideas to revisit
 - After tapping download: close the book page automatically, or stay on it.
