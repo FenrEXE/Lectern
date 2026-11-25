@@ -150,6 +150,11 @@ docker build -t lectern .
   saves each book's "before" so a run can be undone. Anything less than a clear
   match is "needs a look" and not ticked. Audible is asked one book at a time,
   answers cached 30 days. Moving folders is a later step.
+  Series are never renamed for spelling ("Paradox" = "Paradox Series":
+  `seriesKey`), only added when missing or their number corrected; a match
+  from a different series is never used; narrators are only filled when
+  missing. Titles that are just "Series, Book 3" are looked up by series and
+  number (`seriesFromTitle`, `chooseBySeries`).
 
 ### Profiles, sign-in and settings
 - Every `/api` route needs a signed-in profile except health, sign-in and

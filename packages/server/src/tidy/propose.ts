@@ -172,3 +172,36 @@ export function seriesChange(current: SeriesPosition[], proposed: SeriesPosition
 export function finalProposal(current: TidyBook, proposed: TidyBook): TidyBook {
   return { ...proposed, series: seriesChange(current.series, proposed.series) ?? current.series };
 }
+
+/**
+ * The series and book number a title spells out, when the title is really just
+ * that: "Country Mage, Book 03", "Trailer Park Elves, Book 2",
+ * "Book 03 - Fostering Faust 3 - Fostering Faust Series".
+ */
+export function seriesFromTitle(title: string): SeriesPosition | undefined {
+  const t = title.replace(/\s*[([].*?[)\]]/g, '').trim();
+  let m = /^(.+?)\s*[,:\-–]\s*book\s*(\d+(?:\.\d+)?)\s*$/i.exec(t);
+  if (m) return { name: m[1]!.replace(/\s+series$/i, '').trim(), number: String(Number(m[2])) };
+  m = /^book\s*(\d+(?:\.\d+)?)\s*[-–:]\s*.*?[-–:]\s*(.+?)\s+series\s*$/i.exec(t);
+  if (m) return { name: m[2]!.trim(), number: String(Number(m[1])) };
+  return undefined;
+}
+
+/** The series position to look a book up by: its own series, or one spelled out in its title. */
+export function seriesHint(book: TidyBook): SeriesPosition | undefined {
+  return book.series.find((s) => s.number) ?? seriesFromTitle(book.title);
+}
+
+/**
+ * Find the book by series and number among an author's (or a series') books on
+ * Audible. Used when the title alone finds nothing, e.g. "Country Mage, Book 03".
+ */
+export function chooseBySeries(current: TidyBook, wanted: SeriesPosition, candidates: Book[]): { book?: Book; status: TidyStatus; reason?: string } {
+  const matches = candidates.filter((b) =>
+    (b.series ?? []).some((s) => seriesKey(s.name) === seriesKey(wanted.name) && sameNumber(s.number, wanted.number)),
+  );
+  if (matches.length === 0) return { status: 'not-found', reason: `Couldn’t find ${wanted.name} #${wanted.number} on Audible.` };
+  const byAuthor = matches.find((b) => authorsMatch(current, b));
+  if (!byAuthor) return { book: matches[0], status: 'unsure', reason: 'Same series and number, but a different author.' };
+  return { book: byAuthor, status: 'fix', reason: undefined };
+}

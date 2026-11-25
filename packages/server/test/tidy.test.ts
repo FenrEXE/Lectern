@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TidyRunResponse } from '@lectern/shared';
 import { parseAbsItem } from '../src/audiobookshelf/client.js';
-import { chooseMatch, cleanTitle, diff, finalProposal } from '../src/tidy/propose.js';
+import { chooseBySeries, chooseMatch, cleanTitle, diff, finalProposal, seriesFromTitle, seriesHint } from '../src/tidy/propose.js';
 import { metadataFor } from '../src/tidy/service.js';
 import { json } from './fixtures.js';
 import { testApp } from './helpers.js';
@@ -102,6 +102,24 @@ describe('Tidy up', () => {
     // "A Warm Place" vs "Warm Place", same number: nothing to change.
     const seven = tidy('A Warm Place 7', [{ name: 'A Warm Place', number: '7' }]);
     expect(diff(seven, finalProposal(seven, tidy('A Warm Place 7', [{ name: 'Warm Place', number: '7' }])))).toEqual([]);
+  });
+
+  it('finds books whose title is just the series and number by that series and number', () => {
+    expect(seriesFromTitle('Country Mage, Book 03')).toEqual({ name: 'Country Mage', number: '3' });
+    expect(seriesFromTitle('Trailer Park Elves, Book 2')).toEqual({ name: 'Trailer Park Elves', number: '2' });
+    expect(seriesFromTitle('Book 03 - Fostering Faust 3 - Fostering Faust Series')).toEqual({ name: 'Fostering Faust', number: '3' });
+    expect(seriesFromTitle('The Final Empire')).toBeUndefined();
+
+    const current = { title: 'Country Mage, Book 03', authors: ['Kiel Doe'], narrators: [], series: [], hasCover: true };
+    const hint = seriesHint(current)!;
+    const audible = [
+      { title: 'Country Mage 2', authors: ['Kiel Doe'], series: [{ name: 'Country Mage', number: '2' }] },
+      { title: 'Country Mage 3', authors: ['Kiel Doe'], series: [{ name: 'Country Mage', number: '3' }] },
+    ];
+    expect(chooseMatch(current, audible).status).not.toBe('fix'); // the title alone isn't enough
+    const found = chooseBySeries(current, hint, audible);
+    expect(found).toMatchObject({ status: 'fix', book: { title: 'Country Mage 3' } });
+    expect(chooseBySeries(current, { name: 'Country Mage', number: '9' }, audible).status).toBe('not-found');
   });
 
   it('never takes a book from a different series, and keeps existing narrators', () => {

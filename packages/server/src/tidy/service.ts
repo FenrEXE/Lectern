@@ -17,7 +17,7 @@ import { readConfig, type ConfigSource } from '../config.js';
 import type { Db } from '../db.js';
 import type { FetchFn } from '../http.js';
 import { audibleByAsin, searchAudibleBy, type AudibleBook } from '../metadata/audible.js';
-import { checkAsinMatch, chooseMatch, cleanTitle, diff, finalProposal, toTidyBook } from './propose.js';
+import { checkAsinMatch, chooseBySeries, chooseMatch, cleanTitle, diff, finalProposal, seriesHint, toTidyBook } from './propose.js';
 
 const KEEP_LOOKUPS = 30 * 24 * HOUR;
 const PAUSE_MS = 250;
@@ -219,8 +219,23 @@ export class TidyService {
       return searchAudibleBy(this.o.fetch, { title, author }, region, 10);
     });
     // Prefer editions in the admin's language; only look at others if there are none.
-    const inLanguage = candidates.filter((c) => languageMatches(c.language, language));
-    return chooseMatch(book, inLanguage.length ? inLanguage : candidates) as { book?: AudibleBook; status: TidyStatus; reason?: string };
+    const preferLanguage = (list: AudibleBook[]) => {
+      const inLanguage = list.filter((c) => languageMatches(c.language, language));
+      return inLanguage.length ? inLanguage : list;
+    };
+    const byTitle = chooseMatch(book, preferLanguage(candidates)) as { book?: AudibleBook; status: TidyStatus; reason?: string };
+    if (byTitle.status !== 'not-found') return byTitle;
+
+    // Titles like "Country Mage, Book 03" aren't real titles: look the book up
+    // by its series and number among that series' books instead.
+    const hint = seriesHint(book);
+    if (!hint?.number) return byTitle;
+    const inSeries = await cached(this.o.db, `tidy:series:${region}:${hint.name}|${author ?? ''}`.toLowerCase(), KEEP_LOOKUPS, async () => {
+      await this.sleep(PAUSE_MS);
+      return searchAudibleBy(this.o.fetch, { keywords: hint.name, author }, region, 50);
+    });
+    const bySeries = chooseBySeries(book, hint, preferLanguage(inSeries)) as { book?: AudibleBook; status: TidyStatus; reason?: string };
+    return bySeries.status === 'not-found' ? byTitle : bySeries;
   }
 
   // ── 2. Apply ──
