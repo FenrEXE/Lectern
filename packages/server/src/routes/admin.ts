@@ -13,6 +13,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { LANGUAGES } from '@lectern/shared';
 import type { Profile, ProfileLibrary } from '@lectern/shared';
 import type { AbsClient } from '../audiobookshelf/client.js';
 import type { SessionStore } from '../auth/sessions.js';
@@ -59,6 +60,7 @@ const newUser = z.object({
   password: z.string().max(200),
   role: z.enum(['admin', 'member']).default('member'),
   defaultKind: z.enum(['audiobook', 'ebook']).default('audiobook'),
+  language: z.enum(['any', ...LANGUAGES.map((l) => l.id)] as [string, ...string[]]).optional(),
   libraries,
 });
 
@@ -68,6 +70,7 @@ const userChanges = z.object({
   role: z.enum(['admin', 'member']).optional(),
   color: z.string().max(7).optional(),
   defaultKind: z.enum(['audiobook', 'ebook']).optional(),
+  language: z.enum(['any', ...LANGUAGES.map((l) => l.id)] as [string, ...string[]]).optional(),
   libraries,
 });
 

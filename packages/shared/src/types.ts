@@ -25,6 +25,13 @@ export interface Book {
   publishedYear?: number;
   durationMinutes?: number;
   coverUrl?: string;
+  /** The book's language, as Lectern's id ("english"), when the source says. */
+  language?: string;
+  /**
+   * Audible's ID for each author, by name. Two authors with nearly the same
+   * name (R. Knight, R.J. Knight) have different IDs, so author pages use it.
+   */
+  authorIds?: Record<string, string>;
 }
 
 /** Where a suggestion's details came from. */
@@ -174,6 +181,8 @@ export interface Profile {
   /** Avatar colour, e.g. "#3E6B52". */
   color: string;
   defaultKind: MediaKind;
+  /** Only show books in this language (Lectern's id, e.g. "english"), or "any". */
+  language: string;
   libraries: Record<MediaKind, ProfileLibrary>;
 }
 

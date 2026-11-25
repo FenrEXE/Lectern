@@ -64,3 +64,19 @@ describe('correctQuery', () => {
     expect(correctQuery('sand', 'Brandon Sanderson')).toBeUndefined();
   });
 });
+
+describe('authors and languages', () => {
+  it('treats initials the same however they are written, but not different initials', async () => {
+    const { sameAuthor, languageId, languageMatches } = await import('@lectern/shared');
+    expect(sameAuthor('R.J. Knight', 'R. J. Knight')).toBe(true);
+    expect(sameAuthor('rj knight', 'R.J. Knight')).toBe(true);
+    expect(sameAuthor('R. Knight', 'R.J. Knight')).toBe(false);
+    expect(sameAuthor('R. Knight', 'A.R. Knight')).toBe(false);
+    expect(sameAuthor('Elsie Silver', 'elsie  silver')).toBe(true);
+    expect(languageId('en-GB')).toBe('english');
+    expect(languageId('ENG')).toBe('english');
+    expect(languageMatches('german', 'english')).toBe(false);
+    expect(languageMatches(undefined, 'english')).toBe(true); // unknown: kept
+    expect(languageMatches('german', 'any')).toBe(true);
+  });
+});

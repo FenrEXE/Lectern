@@ -10,6 +10,7 @@ interface UserRow {
   role: 'admin' | 'member';
   color: string;
   default_kind: MediaKind;
+  language: string;
   audiobook_dir: string | null;
   audiobook_abs_library: string | null;
   ebook_dir: string | null;
@@ -35,6 +36,7 @@ const toProfile = (r: UserRow): Profile => ({
   role: r.role,
   color: r.color,
   defaultKind: r.default_kind,
+  language: r.language,
   libraries: {
     audiobook: { dir: r.audiobook_dir ?? undefined, absLibraryId: r.audiobook_abs_library ?? undefined },
     ebook: { dir: r.ebook_dir ?? undefined, absLibraryId: r.ebook_abs_library ?? undefined },
@@ -46,6 +48,7 @@ export interface NewProfile {
   password: string;
   role?: 'admin' | 'member';
   defaultKind?: MediaKind;
+  language?: string;
   libraries?: Partial<Record<MediaKind, ProfileLibrary>>;
 }
 
@@ -55,6 +58,7 @@ export interface ProfileChanges {
   role?: 'admin' | 'member';
   color?: string;
   defaultKind?: MediaKind;
+  language?: string;
   libraries?: Partial<Record<MediaKind, ProfileLibrary>>;
 }
 
@@ -108,9 +112,9 @@ export class UserStore {
     const lib = input.libraries ?? {};
     const { lastInsertRowid } = this.db
       .prepare(
-        `INSERT INTO users (name, password_hash, role, color, default_kind,
+        `INSERT INTO users (name, password_hash, role, color, default_kind, language,
            audiobook_dir, audiobook_abs_library, ebook_dir, ebook_abs_library, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         name,
@@ -118,6 +122,7 @@ export class UserStore {
         input.role ?? 'member',
         color,
         input.defaultKind ?? 'audiobook',
+        input.language ?? 'english',
         blankToNull(lib.audiobook?.dir),
         blankToNull(lib.audiobook?.absLibraryId),
         blankToNull(lib.ebook?.dir),
@@ -156,6 +161,10 @@ export class UserStore {
       if (!/^#[0-9a-f]{6}$/i.test(changes.color)) throw new UserError('Colours look like #3E6B52.');
       sets.push('color = @color');
       values.color = changes.color;
+    }
+    if (changes.language !== undefined) {
+      sets.push('language = @language');
+      values.language = changes.language;
     }
     if (changes.defaultKind !== undefined) {
       sets.push('default_kind = @default_kind');

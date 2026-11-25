@@ -404,6 +404,47 @@ describe('author and series pages', () => {
     await app.close();
   });
 
+  it('keeps look-alike authors and other languages off an author page', async () => {
+    const p = (asin: string, title: string, series: string, author: [string, string], language = 'english') => ({
+      asin,
+      title,
+      language,
+      authors: [{ name: author[0], asin: author[1] }],
+      series: [{ title: series, sequence: '1' }],
+      release_date: '2023-01-01',
+    });
+    const results = {
+      products: [
+        p('K1', 'Thor & Dragon', 'Dragon Hearts', ['R. Knight', 'B00RK00001']),
+        p('K2', 'Steel Hunt', 'Iron Pack', ['R.J. Knight', 'B00RJK0001']),
+        p('K3', 'Stone Bride', 'Clan Stone', ['A.R. Knight', 'B00ARK0001']),
+        p('K4', 'Thor und Drache', 'Drachenherzen', ['R. Knight', 'B00RK00001'], 'german'),
+      ],
+    };
+    const f = fakeFetch([
+      [/api\.audible\.com/, () => json(results)],
+      [/googleapis\.com/, () => json({ items: [] })],
+    ]);
+    const { app, asAdmin } = await testApp({}, { fetch: f });
+
+    // Opened from a book: Audible's author ID decides.
+    let res = (await asAdmin({ url: '/api/author?name=R.%20Knight&id=B00RK00001&kind=audiobook' })).json<AuthorResponse>();
+    expect(res.series.map((s) => s.name)).toEqual(['Dragon Hearts']);
+    // Without an ID, the name must match exactly ("R. Knight" isn't "R.J. Knight").
+    res = (await asAdmin({ url: '/api/author?name=R.%20Knight&kind=audiobook' })).json<AuthorResponse>();
+    expect(res.series.map((s) => s.name)).toEqual(['Dragon Hearts']);
+
+    // A profile set to German sees the German edition instead; "any" sees both.
+    const me = (await asAdmin({ url: '/api/auth/me' })).json<MeResponse>().me!;
+    await asAdmin({ method: 'PUT', url: '/api/me', payload: { language: 'german' } });
+    res = (await asAdmin({ url: '/api/author?name=R.%20Knight&id=B00RK00001&kind=audiobook' })).json<AuthorResponse>();
+    expect(res.series.map((s) => s.name)).toEqual(['Drachenherzen']);
+    await asAdmin({ method: 'PUT', url: `/api/admin/users/${me.id}`, payload: { language: 'any' } });
+    res = (await asAdmin({ url: '/api/author?name=R.%20Knight&id=B00RK00001&kind=audiobook' })).json<AuthorResponse>();
+    expect(res.series).toHaveLength(2);
+    await app.close();
+  });
+
   it('lists a series in order', async () => {
     const { app, asAdmin } = await testApp({}, { fetch: fetchFn() });
     const res = (

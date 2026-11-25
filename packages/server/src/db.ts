@@ -67,6 +67,10 @@ const migrations: string[] = [
   CREATE INDEX sessions_user ON sessions (user_id);
   ALTER TABLE requests ADD COLUMN user_id INTEGER REFERENCES users (id) ON DELETE SET NULL;
   `,
+  // 4: each profile's book language ("english", or "any" for no filter)
+  `
+  ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'english';
+  `,
 ];
 
 /** Open (or create) the database and bring its schema up to date. */

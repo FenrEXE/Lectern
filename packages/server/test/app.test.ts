@@ -33,7 +33,7 @@ describe('database', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lectern-db-'));
     openDb(dir).close();
     const db = openDb(dir);
-    expect(db.pragma('user_version', { simple: true })).toBe(3);
+    expect(db.pragma('user_version', { simple: true })).toBe(4);
     db.close();
   });
 });

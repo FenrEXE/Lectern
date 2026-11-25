@@ -87,6 +87,7 @@ export interface ProfileInput {
   password?: string;
   role?: 'admin' | 'member';
   defaultKind?: MediaKind;
+  language?: string;
   libraries?: Partial<Record<MediaKind, ProfileLibrary>>;
 }
 
@@ -98,7 +99,7 @@ export const api = {
     post<MeResponse>('/api/auth/setup', input),
   login: (name: string, password: string) => post<MeResponse>('/api/auth/login', { name, password }),
   logout: () => post<{ ok: true }>('/api/auth/logout'),
-  updateMe: (changes: { defaultKind?: MediaKind; currentPassword?: string; newPassword?: string }) =>
+  updateMe: (changes: { defaultKind?: MediaKind; language?: string; currentPassword?: string; newPassword?: string }) =>
     put<Profile>('/api/me', changes),
 
   status: () => request<StatusResponse>('/api/status'),
@@ -109,10 +110,14 @@ export const api = {
   suggest: (q: string, kind: MediaKind, signal?: AbortSignal) =>
     request<SuggestResponse>(`/api/suggest?${new URLSearchParams({ q, kind })}`, { signal }),
 
-  author: (name: string, kind: MediaKind) => request<AuthorResponse>(`/api/author?${new URLSearchParams({ name, kind })}`),
+  /** `id` is Audible's author ID, when known: it keeps look-alike names off the page. */
+  author: (name: string, kind: MediaKind, id?: string) =>
+    request<AuthorResponse>(`/api/author?${new URLSearchParams({ name, kind, ...(id ? { id } : {}) })}`),
 
-  series: (name: string, author: string | undefined, kind: MediaKind) =>
-    request<SeriesResponse>(`/api/series?${new URLSearchParams({ name, kind, ...(author ? { author } : {}) })}`),
+  series: (name: string, author: string | undefined, kind: MediaKind, authorId?: string) =>
+    request<SeriesResponse>(
+      `/api/series?${new URLSearchParams({ name, kind, ...(author ? { author } : {}), ...(author && authorId ? { authorId } : {}) })}`,
+    ),
 
   availability: (book: Book, kind: MediaKind) =>
     post<AvailabilityResponse>('/api/availability', {

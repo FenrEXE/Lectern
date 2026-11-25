@@ -2,7 +2,9 @@
 // info sources (Audible, Google Books), never MAM: MAM is only asked when
 // someone opens a particular book.
 import {
+  languageMatches,
   normalizeText,
+  sameAuthor,
   titleSimilarity,
   type AuthorResponse,
   type BookSuggestion,
@@ -12,7 +14,7 @@ import {
   type SeriesResponse,
 } from '@lectern/shared';
 import { readConfig } from '../config.js';
-import { searchAudibleBy } from '../metadata/audible.js';
+import { searchAudibleBy, type AudibleBook } from '../metadata/audible.js';
 import { searchGoogleBooks } from '../metadata/googleBooks.js';
 import { askSources, mergeDuplicates, SOURCE_ORDER, type SourceResult, type SuggestDeps } from './suggest.js';
 
@@ -22,7 +24,43 @@ const browseSources = (kind: MediaKind): MetadataSource[] => SOURCE_ORDER[kind].
 /** Different recordings of the same book; the plain one is preferred. */
 const SPECIAL_EDITION = /dramati[sz]ed|graphic audio|full[- ]cast|abridged|bbc radio|\bsummary\b/i;
 
-const byAuthor = (author: string) => (b: BookSuggestion) => b.authors.some((a) => titleSimilarity(a, author) >= 0.8);
+/** Who the page is for: a name, plus Audible's ID for that person when known. */
+export interface AuthorFilter {
+  name: string;
+  /** Audible's author ID. Tells apart people with near-identical names. */
+  id?: string;
+}
+
+/** What a profile wants to see. */
+export interface BrowseOptions {
+  /** Lectern's language id ("english"), or "any". */
+  language: string;
+}
+
+/**
+ * Is this book by that author? With Audible's author ID, only the ID counts,
+ * so "R. Knight" never picks up R.J. Knight or A.R. Knight. Without one (Google
+ * Books, or no ID known), the name has to match exactly, apart from case,
+ * accents and punctuation.
+ */
+export const isByAuthor = (author: AuthorFilter) => (b: BookSuggestion): boolean => {
+  if (author.id && b.authorIds) return Object.values(b.authorIds).includes(author.id);
+  return b.authors.some((a) => sameAuthor(a, author.name));
+};
+
+// Audible's author search is loose and returns up to 50 per page. A few pages
+// make sure a prolific author's own books aren't crowded out by look-alikes.
+const AUDIBLE_PAGES = 3;
+
+async function audibleByAuthor(deps: SuggestDeps, by: { author: string; keywords?: string }, region: string): Promise<AudibleBook[]> {
+  const all: AudibleBook[] = [];
+  for (let page = 1; page <= AUDIBLE_PAGES; page++) {
+    const books = await searchAudibleBy(deps.fetch, by, region, 50, page);
+    all.push(...books);
+    if (books.length < 50) break;
+  }
+  return all;
+}
 
 /** Turn a source's answer into suggestions, keeping the source's own order as a light score. */
 function asSuggestions(items: SourceResult, source: MetadataSource): BookSuggestion[] {
@@ -56,18 +94,24 @@ function onePerNumber(books: BookSuggestion[]): BookSuggestion[] {
   return [...chosen.values()];
 }
 
-export async function authorBooks(deps: SuggestDeps, author: string, kind: MediaKind): Promise<AuthorResponse> {
+export async function authorBooks(
+  deps: SuggestDeps,
+  authorFilter: AuthorFilter,
+  kind: MediaKind,
+  options: BrowseOptions,
+): Promise<AuthorResponse> {
   const config = readConfig(deps.config);
+  const author = authorFilter.name;
   const key = normalizeText(author);
   const { results, problems } = await askSources(deps, browseSources(kind), (s) =>
     s === 'audible'
       ? {
-          cacheKey: `browse:author:audible:${config.audibleRegion}:${key}`,
+          cacheKey: `browse:author:audible:v2:${config.audibleRegion}:${key}`,
           load: async () =>
-            (await searchAudibleBy(deps.fetch, { author }, config.audibleRegion, 50)).map((b) => ({ sourceId: b.asin, book: b })),
+            (await audibleByAuthor(deps, { author }, config.audibleRegion)).map((b) => ({ sourceId: b.asin, book: b })),
         }
       : {
-          cacheKey: `browse:author:google:${key}`,
+          cacheKey: `browse:author:google:v2:${key}`,
           load: async () =>
             (await searchGoogleBooks(deps.fetch, `inauthor:"${author}"`, config.googleBooksApiKey, 40)).map(
               ({ googleId, ...b }) => ({ sourceId: googleId, book: b }),
@@ -78,7 +122,9 @@ export async function authorBooks(deps: SuggestDeps, author: string, kind: Media
   const books = mergeDuplicates(
     results.flatMap(({ source, items }) => asSuggestions(items, source)),
     kind,
-  ).filter(byAuthor(author));
+  )
+    .filter(isByAuthor(authorFilter))
+    .filter((b) => languageMatches(b.language, options.language));
 
   // Group by series (by name, ignoring case and punctuation).
   const groups = new Map<string, SeriesGroup>();
@@ -111,15 +157,17 @@ export async function authorBooks(deps: SuggestDeps, author: string, kind: Media
 export async function seriesBooks(
   deps: SuggestDeps,
   seriesName: string,
-  author: string | undefined,
+  authorFilter: AuthorFilter | undefined,
   kind: MediaKind,
+  options: BrowseOptions,
 ): Promise<SeriesResponse> {
+  const author = authorFilter?.name;
   const config = readConfig(deps.config);
   const key = `${normalizeText(seriesName)}|${normalizeText(author ?? '')}`;
   const { results, problems } = await askSources(deps, browseSources(kind), (s) =>
     s === 'audible'
       ? {
-          cacheKey: `browse:series:audible:${config.audibleRegion}:${key}`,
+          cacheKey: `browse:series:audible:v2:${config.audibleRegion}:${key}`,
           load: async () =>
             (await searchAudibleBy(deps.fetch, { keywords: seriesName, author }, config.audibleRegion, 50)).map((b) => ({
               sourceId: b.asin,
@@ -127,7 +175,7 @@ export async function seriesBooks(
             })),
         }
       : {
-          cacheKey: `browse:series:google:${key}`,
+          cacheKey: `browse:series:google:v2:${key}`,
           load: async () =>
             (
               await searchGoogleBooks(
@@ -146,7 +194,8 @@ export async function seriesBooks(
     results.flatMap(({ source, items }) => asSuggestions(items, source)),
     kind,
   )
-    .filter((b) => inThisSeries(b) !== -1 && (!author || byAuthor(author)(b)))
+    .filter((b) => inThisSeries(b) !== -1 && (!authorFilter || isByAuthor(authorFilter)(b)))
+    .filter((b) => languageMatches(b.language, options.language))
     // Put this series first, so its number is the one shown and used.
     .map((b) => {
       const i = inThisSeries(b);

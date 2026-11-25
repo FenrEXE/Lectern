@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
-import type { MediaKind, Profile } from '@lectern/shared';
+import { LANGUAGES, type MediaKind, type Profile } from '@lectern/shared';
 import type { AbsLibrary, ProfileInput } from '../../api';
 import FolderPicker from './FolderPicker.vue';
 
@@ -23,6 +23,7 @@ const form = reactive({
   password: '',
   role: props.profile?.role ?? ('member' as 'admin' | 'member'),
   defaultKind: props.profile?.defaultKind ?? ('audiobook' as MediaKind),
+  language: props.profile?.language ?? 'english',
   libraries: {
     audiobook: {
       dir: props.profile?.libraries.audiobook.dir ?? '',
@@ -44,6 +45,7 @@ function submit(): void {
     name: form.name,
     role: form.role,
     defaultKind: form.defaultKind,
+    language: form.language,
     libraries: form.libraries,
   };
   if (form.password) input.password = form.password;
@@ -84,6 +86,13 @@ function submit(): void {
         <select :id="`${prefix}-kind`" v-model="form.defaultKind" class="input">
           <option value="audiobook">Audiobooks</option>
           <option value="ebook">Ebooks</option>
+        </select>
+      </div>
+      <div class="field">
+        <label :for="`${prefix}-language`">Book language</label>
+        <select :id="`${prefix}-language`" v-model="form.language" class="input">
+          <option v-for="l in LANGUAGES" :key="l.id" :value="l.id">{{ l.label }}</option>
+          <option value="any">Any language</option>
         </select>
       </div>
     </div>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import type { MediaKind } from '@lectern/shared';
+import { LANGUAGES, type MediaKind } from '@lectern/shared';
 import { api } from '../../api';
 import { initials } from '../../format';
 import { me, signedIn, signOut } from '../../session';
@@ -20,6 +20,18 @@ async function setKind(kind: MediaKind): Promise<void> {
     signedIn(await api.updateMe({ defaultKind: kind }));
   } finally {
     savingKind.value = false;
+  }
+}
+
+const savingLanguage = ref(false);
+
+async function setLanguage(event: Event): Promise<void> {
+  const language = (event.target as HTMLSelectElement).value;
+  savingLanguage.value = true;
+  try {
+    signedIn(await api.updateMe({ language }));
+  } finally {
+    savingLanguage.value = false;
   }
 }
 
@@ -63,6 +75,15 @@ async function changePassword(): Promise<void> {
         </button>
       </div>
       <p class="field-hint">What Search shows first. You can always switch on the Search page.</p>
+    </div>
+
+    <div class="field">
+      <label for="my-language">Book language</label>
+      <select id="my-language" class="input" :value="me.language" :disabled="savingLanguage" @change="setLanguage">
+        <option v-for="l in LANGUAGES" :key="l.id" :value="l.id">{{ l.label }}</option>
+        <option value="any">Any language</option>
+      </select>
+      <p class="field-hint">Search, author and series pages only show books in this language.</p>
     </div>
 
     <details class="password">

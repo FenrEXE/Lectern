@@ -1,7 +1,7 @@
 // Book lookups from Audible's public catalogue. No account needed.
 // Audible is very forgiving of typos and knows series and book numbers,
 // which makes it the best first stop for audiobooks.
-import type { Book } from '@lectern/shared';
+import { languageId, type Book } from '@lectern/shared';
 import { getJson, stripHtml, type FetchFn } from '../http.js';
 
 export const AUDIBLE_HOSTS: Record<string, string> = {
@@ -34,6 +34,7 @@ export async function searchAudibleBy(
   by: { keywords?: string; author?: string; title?: string },
   region = 'us',
   count = 20,
+  page = 1,
 ): Promise<AudibleBook[]> {
   const host = AUDIBLE_HOSTS[region] ?? AUDIBLE_HOSTS.us;
   const params = new URLSearchParams({
@@ -41,6 +42,7 @@ export async function searchAudibleBy(
     ...(by.author ? { author: by.author } : {}),
     ...(by.title ? { title: by.title } : {}),
     num_results: String(Math.min(50, count)),
+    ...(page > 1 ? { page: String(page) } : {}),
     products_sort_by: 'Relevance',
     response_groups: 'contributors,product_desc,product_attrs,media,series',
     image_sizes: '500',
@@ -80,6 +82,12 @@ export function parseAudible(json: unknown): AudibleBook[] {
     const date = str(p.release_date) ?? str(p.issue_date);
     const summary = str(p.publisher_summary) ?? str(p.merchandising_summary);
     const minutes = typeof p.runtime_length_min === 'number' ? p.runtime_length_min : undefined;
+    const authorIds: Record<string, string> = {};
+    for (const a of Array.isArray(p.authors) ? p.authors.filter(isObj) : []) {
+      const name = str(a.name);
+      const id = str(a.asin);
+      if (name && id) authorIds[name] = id;
+    }
 
     books.push({
       asin,
@@ -92,6 +100,8 @@ export function parseAudible(json: unknown): AudibleBook[] {
       publishedYear: date ? Number(date.slice(0, 4)) || undefined : undefined,
       durationMinutes: minutes,
       coverUrl: cover,
+      language: languageId(str(p.language)),
+      authorIds: Object.keys(authorIds).length ? authorIds : undefined,
     });
   }
   return books;

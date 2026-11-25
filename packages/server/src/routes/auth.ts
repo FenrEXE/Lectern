@@ -11,6 +11,7 @@
 import { randomInt, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { LANGUAGES } from '@lectern/shared';
 import type { MeResponse, Profile, ProfilesResponse } from '@lectern/shared';
 import { readConfig, type ConfigSource } from '../config.js';
 import { waitMessage, type LoginLimiter } from '../auth/guard.js';
@@ -31,6 +32,7 @@ const setupBody = credentials.extend({
 
 const meChanges = z.object({
   defaultKind: z.enum(['audiobook', 'ebook']).optional(),
+  language: z.enum(['any', ...LANGUAGES.map((l) => l.id)] as [string, ...string[]]).optional(),
   currentPassword: z.string().max(200).optional(),
   newPassword: z.string().max(200).optional(),
 });
@@ -158,7 +160,7 @@ export function authRoutes(app: FastifyInstance, deps: AuthDeps): void {
     const parsed = meChanges.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'Bad request' });
     const me = req.user!;
-    const { defaultKind, currentPassword, newPassword } = parsed.data;
+    const { defaultKind, language, currentPassword, newPassword } = parsed.data;
     try {
       if (newPassword !== undefined) {
         // Limited like signing in, so a borrowed session can't be used to
@@ -172,7 +174,7 @@ export function authRoutes(app: FastifyInstance, deps: AuthDeps): void {
         }
         limiter.succeeded(keys);
       }
-      const updated = await users.update(me.id, { defaultKind, password: newPassword });
+      const updated = await users.update(me.id, { defaultKind, language, password: newPassword });
       // A new password signs you out everywhere else.
       if (newPassword !== undefined) sessions.endAllFor(me.id, req.sessionToken ?? undefined);
       return updated;

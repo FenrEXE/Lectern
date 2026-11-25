@@ -70,7 +70,7 @@ export async function suggestBooks(deps: SuggestDeps, query: string, kind: Media
       (await searchOpenLibrary(fetch, query)).map(({ openLibraryKey, ...b }) => ({ sourceId: openLibraryKey, book: b })),
   };
   const cacheKey = (s: MetadataSource) =>
-    s === 'audible' ? `meta:audible:${config.audibleRegion}:${key}` : `meta:${s}:${key}`;
+    s === 'audible' ? `meta:v2:audible:${config.audibleRegion}:${key}` : `meta:v2:${s}:${key}`;
 
   // Open Library is the backup: always for ebooks, and for audiobooks only
   // while Google is resting.
@@ -193,6 +193,8 @@ export function mergeDuplicates(items: BookSuggestion[], kind: MediaKind): BookS
     existing.durationMinutes ??= item.durationMinutes;
     existing.publishedYear ??= item.publishedYear;
     existing.coverUrl ??= item.coverUrl;
+    existing.language ??= item.language;
+    existing.authorIds ??= item.authorIds;
   }
   return merged;
 }

@@ -1,6 +1,6 @@
 // Book lookups from Google Books. Works without an API key (with a lower
 // daily limit). Best for ebooks: it knows ISBNs, but not series.
-import type { Book } from '@lectern/shared';
+import { languageId, type Book } from '@lectern/shared';
 import { getJson, stripHtml, type FetchFn } from '../http.js';
 
 export interface GoogleBook extends Book {
@@ -52,6 +52,7 @@ export function parseGoogleBooks(json: unknown): GoogleBook[] {
       publishedYear: date ? Number(date.slice(0, 4)) || undefined : undefined,
       // Google serves covers over http with a page-curl effect; ask for https without it.
       coverUrl: cover?.replace(/^http:/, 'https:').replace(/&edge=curl/, ''),
+      language: languageId(str(v.language)),
     });
   }
   return books;

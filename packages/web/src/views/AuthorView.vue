@@ -13,6 +13,8 @@ const route = useRoute();
 const router = useRouter();
 
 const name = computed(() => String(route.params.name ?? ''));
+// Audible's ID for this author, when the page was opened from a book.
+const authorId = computed(() => (typeof route.query.id === 'string' ? route.query.id : undefined));
 const kind = computed<MediaKind>(() =>
   route.query.kind === 'ebook' || route.query.kind === 'audiobook' ? route.query.kind : defaultKind.value,
 );
@@ -23,12 +25,12 @@ const error = ref<string>();
 const open = ref<BookSuggestion>();
 
 watch(
-  [name, kind],
+  [name, authorId, kind],
   async () => {
     data.value = undefined;
     error.value = undefined;
     try {
-      data.value = await api.author(name.value, kind.value);
+      data.value = await api.author(name.value, kind.value, authorId.value);
     } catch (err) {
       error.value = (err as Error).message;
     }
@@ -78,7 +80,7 @@ const numberLabel = (b: BookSuggestion) => (b.series?.[0]?.number ? `Book ${b.se
     <template v-else-if="sort === 'series'">
       <section v-for="group in data.series" :key="group.name" class="group">
         <h2>
-          <RouterLink :to="{ name: 'series', params: { name: group.name }, query: { author: name, kind } }">
+          <RouterLink :to="{ name: 'series', params: { name: group.name }, query: { author: name, authorId, kind } }">
             {{ group.name }}
           </RouterLink>
           <span class="count">{{ group.books.length }} book{{ group.books.length === 1 ? '' : 's' }}</span>

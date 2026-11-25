@@ -11,6 +11,7 @@ import { defaultKind } from '../session';
 const route = useRoute();
 const name = computed(() => String(route.params.name ?? ''));
 const author = computed(() => (typeof route.query.author === 'string' ? route.query.author : undefined));
+const authorId = computed(() => (typeof route.query.authorId === 'string' ? route.query.authorId : undefined));
 const kind = computed<MediaKind>(() =>
   route.query.kind === 'ebook' || route.query.kind === 'audiobook' ? route.query.kind : defaultKind.value,
 );
@@ -20,12 +21,12 @@ const error = ref<string>();
 const open = ref<BookSuggestion>();
 
 watch(
-  [name, author, kind],
+  [name, author, authorId, kind],
   async () => {
     data.value = undefined;
     error.value = undefined;
     try {
-      data.value = await api.series(name.value, author.value, kind.value);
+      data.value = await api.series(name.value, author.value, kind.value, authorId.value);
     } catch (err) {
       error.value = (err as Error).message;
     }
@@ -39,7 +40,7 @@ watch(
     <p class="eyebrow">Series</p>
     <h1>{{ data?.series ?? name }}</h1>
     <p v-if="author" class="by">
-      by <RouterLink :to="{ name: 'author', params: { name: author }, query: { kind } }">{{ author }}</RouterLink>
+      by <RouterLink :to="{ name: 'author', params: { name: author }, query: { kind, id: authorId } }">{{ author }}</RouterLink>
     </p>
   </header>
 
