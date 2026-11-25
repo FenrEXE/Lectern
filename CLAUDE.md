@@ -156,7 +156,11 @@ docker build -t lectern .
   missing. Titles that are just "Series, Book 3" are looked up by series and
   number (`seriesFromTitle`, `chooseBySeries`). A title is never shortened by
   dropping real words ("X: Skulls and Stones" → "X" is refused: `losesWords`);
-  only edition notes and series filler may go.
+  only edition notes and series filler may go. "Series: Book Name" titles are
+  also searched by the part after the colon (`titleVariants`), and a known book
+  number (from Audiobookshelf, the title or the folder: `numberFromPath`)
+  rules out other books in the series, so the result is the book's own title
+  with the series set ("Skulls and Stones", Monster Girl Defense Force #2).
 
 ### Profiles, sign-in and settings
 - Every `/api` route needs a signed-in profile except health, sign-in and

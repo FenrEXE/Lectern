@@ -17,7 +17,7 @@ import { readConfig, type ConfigSource } from '../config.js';
 import type { Db } from '../db.js';
 import type { FetchFn } from '../http.js';
 import { audibleByAsin, searchAudibleBy, type AudibleBook } from '../metadata/audible.js';
-import { checkAsinMatch, chooseBySeries, chooseMatch, cleanTitle, diff, finalProposal, seriesHint, toTidyBook } from './propose.js';
+import { checkAsinMatch, chooseBySeries, chooseMatch, diff, finalProposal, numberFromPath, seriesFromTitle, seriesHint, titleVariants, toTidyBook } from './propose.js';
 
 const KEEP_LOOKUPS = 30 * 24 * HOUR;
 const PAUSE_MS = 250;
@@ -180,7 +180,7 @@ export class TidyService {
           reason = 'Audiobookshelf says this book’s files are missing.';
         } else {
           try {
-            const found = await this.lookUp(item.book, language);
+            const found = await this.lookUp(item.book, language, numberFromPath(item.relPath));
             status = found.status;
             reason = found.reason;
             if (found.book) {
@@ -202,7 +202,11 @@ export class TidyService {
   }
 
   /** Find the book on Audible: by its ASIN if it has one, otherwise by title and author. */
-  private async lookUp(book: TidyBook, language: string): Promise<{ book?: AudibleBook; status: TidyStatus; reason?: string }> {
+  private async lookUp(
+    book: TidyBook,
+    language: string,
+    numberInFolder?: string,
+  ): Promise<{ book?: AudibleBook; status: TidyStatus; reason?: string }> {
     const region = readConfig(this.o.config).audibleRegion;
     if (book.asin) {
       const byAsin = await cached(this.o.db, `tidy:asin:${region}:${book.asin}`, KEEP_LOOKUPS, async () => {
@@ -212,23 +216,28 @@ export class TidyService {
       if (byAsin) return { book: byAsin, ...checkAsinMatch(book, byAsin) };
     }
     if (!book.title) return { status: 'not-found', reason: 'This book has no title in Audiobookshelf.' };
-    const title = cleanTitle(book.title);
     const author = book.authors[0];
-    const candidates = await cached(this.o.db, `tidy:search:${region}:${title}|${author ?? ''}`.toLowerCase(), KEEP_LOOKUPS, async () => {
-      await this.sleep(PAUSE_MS);
-      return searchAudibleBy(this.o.fetch, { title, author }, region, 10);
-    });
+    // Search the whole title, and the book's own name after a "Series: " prefix.
+    const candidates: AudibleBook[] = [];
+    for (const title of titleVariants(book.title)) {
+      const found = await cached(this.o.db, `tidy:search:${region}:${title}|${author ?? ''}`.toLowerCase(), KEEP_LOOKUPS, async () => {
+        await this.sleep(PAUSE_MS);
+        return searchAudibleBy(this.o.fetch, { title, author }, region, 10);
+      });
+      for (const b of found) if (!candidates.some((c) => c.asin === b.asin)) candidates.push(b);
+    }
+    const number = book.series.find((s) => s.number)?.number ?? seriesFromTitle(book.title)?.number ?? numberInFolder;
     // Prefer editions in the admin's language; only look at others if there are none.
     const preferLanguage = (list: AudibleBook[]) => {
       const inLanguage = list.filter((c) => languageMatches(c.language, language));
       return inLanguage.length ? inLanguage : list;
     };
-    const byTitle = chooseMatch(book, preferLanguage(candidates)) as { book?: AudibleBook; status: TidyStatus; reason?: string };
+    const byTitle = chooseMatch(book, preferLanguage(candidates), number) as { book?: AudibleBook; status: TidyStatus; reason?: string };
     if (byTitle.status !== 'not-found') return byTitle;
 
     // Titles like "Country Mage, Book 03" aren't real titles: look the book up
     // by its series and number among that series' books instead.
-    const hint = seriesHint(book);
+    const hint = seriesHint(book) ?? (numberInFolder && book.series[0] ? { name: book.series[0].name, number: numberInFolder } : undefined);
     if (!hint?.number) return byTitle;
     const inSeries = await cached(this.o.db, `tidy:series:${region}:${hint.name}|${author ?? ''}`.toLowerCase(), KEEP_LOOKUPS, async () => {
       await this.sleep(PAUSE_MS);

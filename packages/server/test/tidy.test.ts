@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TidyRunResponse } from '@lectern/shared';
 import { parseAbsItem } from '../src/audiobookshelf/client.js';
-import { chooseBySeries, chooseMatch, cleanTitle, diff, finalProposal, seriesFromTitle, seriesHint } from '../src/tidy/propose.js';
+import { chooseBySeries, chooseMatch, cleanTitle, diff, finalProposal, numberFromPath, seriesFromTitle, seriesHint, titleVariants, toTidyBook } from '../src/tidy/propose.js';
 import { metadataFor } from '../src/tidy/service.js';
 import { json } from './fixtures.js';
 import { testApp } from './helpers.js';
@@ -116,7 +116,8 @@ describe('Tidy up', () => {
       { title: 'Country Mage 2', authors: ['Kiel Doe'], series: [{ name: 'Country Mage', number: '2' }] },
       { title: 'Country Mage 3', authors: ['Kiel Doe'], series: [{ name: 'Country Mage', number: '3' }] },
     ];
-    expect(chooseMatch(current, audible).status).not.toBe('fix'); // the title alone isn't enough
+    // The number from the title rules out book 2.
+    expect(chooseMatch(current, audible)).toMatchObject({ status: 'fix', book: { title: 'Country Mage 3' } });
     const found = chooseBySeries(current, hint, audible);
     expect(found).toMatchObject({ status: 'fix', book: { title: 'Country Mage 3' } });
     expect(chooseBySeries(current, { name: 'Country Mage', number: '9' }, audible).status).toBe('not-found');
@@ -129,6 +130,25 @@ describe('Tidy up', () => {
     expect(diff(t('Power Leveling: Level Up!, Book 4'), t('Level Up! 4')).map((c) => c.field)).toEqual([]);
     // Only filler goes: fine.
     expect(diff(t('Monster Girl Defense Force: Monster Girl Defense Force, Book 1', mgdf), t('Monster Girl Defense Force', mgdf)).map((c) => c.field)).toEqual(['title']);
+  });
+
+  it('turns "Series: Book Name" into the book’s own title in its series', () => {
+    expect(titleVariants('Monster Girl Defense Force: Skulls and Stones')).toEqual([
+      'Monster Girl Defense Force: Skulls and Stones',
+      'Skulls and Stones',
+    ]);
+    expect(numberFromPath('Simon Archer/Monster Girl Defense Force/MGDF Book 2')).toBe('2');
+    const current = { title: 'Monster Girl Defense Force: Skulls and Stones', authors: ['Simon Archer'], narrators: [], series: [], hasCover: true };
+    const book1 = { title: 'Monster Girl Defense Force', subtitle: 'Monster Girl Defense Force, Book 1', authors: ['Simon Archer'], series: [{ name: 'Monster Girl Defense Force', number: '1' }] };
+    const book2 = { title: 'Skulls and Stones', subtitle: 'Monster Girl Defense Force, Book 2', authors: ['Simon Archer'], series: [{ name: 'Monster Girl Defense Force', number: '2' }] };
+    const found = chooseMatch(current, [book1, book2], '2');
+    expect(found).toMatchObject({ status: 'fix', book: { title: 'Skulls and Stones' } });
+    expect(chooseMatch(current, [book1], '2').status).toBe('not-found'); // book 1 is never taken for book 2
+    const proposed = finalProposal(current, toTidyBook(book2));
+    expect(diff(current, proposed).map((c) => `${c.field}: ${c.to}`)).toEqual([
+      'title: Skulls and Stones',
+      'series: Monster Girl Defense Force #2',
+    ]);
   });
 
   it('never takes a book from a different series, and keeps existing narrators', () => {

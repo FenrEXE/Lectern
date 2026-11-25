@@ -72,20 +72,33 @@ export function toTidyBook(b: Book): TidyBook {
   };
 }
 
+// Every way of reading the title: whole, and each side of a "Series: Name" split.
 const titleScore = (current: TidyBook, found: Book): number =>
   Math.max(
-    titleSimilarity(cleanTitle(current.title), found.title),
-    titleSimilarity(cleanTitle(current.title), [found.title, found.subtitle].filter(Boolean).join(' ')),
+    ...titleVariants(current.title).flatMap((t) => [
+      titleSimilarity(t, found.title),
+      titleSimilarity(t, [found.title, found.subtitle].filter(Boolean).join(' ')),
+      titleSimilarity(t, [...(found.series ?? []).map((s) => s.name), found.title].join(' ')),
+    ]),
   );
 
 const authorsMatch = (current: TidyBook, found: Book): boolean =>
   current.authors.length === 0 || current.authors.some((a) => found.authors.some((b) => sameAuthor(a, b) || titleSimilarity(a, b) >= 0.85));
 
 /** The best of several candidates, and how sure Lectern is. */
-export function chooseMatch(current: TidyBook, candidates: Book[]): { book?: Book; status: TidyStatus; reason?: string } {
+export function chooseMatch(
+  current: TidyBook,
+  candidates: Book[],
+  /** The book's number in its series, if known (from Audiobookshelf, the title or the folder). */
+  number?: string,
+): { book?: Book; status: TidyStatus; reason?: string } {
+  number ??= current.series.find((s) => s.number)?.number ?? seriesFromTitle(current.title)?.number;
   let best: { book: Book; title: number; author: boolean } | undefined;
-  // A candidate from a different series is another book, whatever its title.
-  const usable = candidates.filter((b) => !seriesConflict(current.series, b.series ?? []));
+  // A candidate from a different series is another book, whatever its title;
+  // so is one with a different number in the series (book 1 isn't book 2).
+  const usable = candidates.filter(
+    (b) => !seriesConflict(current.series, b.series ?? []) && !(number && (b.series ?? []).some((s) => s.number) && !(b.series ?? []).some((s) => sameNumber(s.number, number))),
+  );
   for (const book of usable) {
     const title = titleScore(current, book);
     const author = authorsMatch(current, book);
@@ -224,4 +237,27 @@ export function chooseBySeries(current: TidyBook, wanted: SeriesPosition, candid
   const byAuthor = matches.find((b) => authorsMatch(current, b));
   if (!byAuthor) return { book: matches[0], status: 'unsure', reason: 'Same series and number, but a different author.' };
   return { book: byAuthor, status: 'fix', reason: undefined };
+}
+
+/**
+ * The titles worth searching for. "Monster Girl Defense Force: Skulls and
+ * Stones" is often "<series>: <the book's own name>", so the part after the
+ * colon (or dash) is tried as well as the whole title.
+ */
+export function titleVariants(title: string): string[] {
+  const whole = cleanTitle(title);
+  const variants = [whole];
+  const m = /^(.+?)\s*(?::|\s[-–]\s)\s*(.+)$/.exec(title.replace(/\s*[([].*?[)\]]/g, '').trim());
+  if (m) {
+    const after = cleanTitle(m[2]!);
+    if (after && after.split(' ').length >= 1 && !/^book\s*\d/i.test(after)) variants.push(after);
+  }
+  return [...new Set(variants.filter(Boolean))];
+}
+
+/** A book number in the last folder name, e.g. "MGDF Book 2" or "Book 03". */
+export function numberFromPath(relPath?: string): string | undefined {
+  const last = relPath?.split('/').filter(Boolean).pop();
+  const m = last ? /\b(?:book|vol(?:ume)?|#)\s*(\d+(?:\.\d+)?)\b/i.exec(last) : null;
+  return m ? String(Number(m[1])) : undefined;
 }
