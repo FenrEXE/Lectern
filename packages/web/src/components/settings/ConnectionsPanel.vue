@@ -42,7 +42,7 @@ const groups: GroupDef[] = [
   {
     id: 'mam',
     title: 'MyAnonamouse',
-    lead: 'Lectern searches and downloads with this session. Make a dedicated one in MAM → Preferences → Security, locked to your VPN’s network.',
+    lead: 'Lectern searches and downloads with this session. Make a dedicated one in MAM → Preferences → Security, locked to the IP or network Lectern uses.',
     fields: [
       { key: 'MAM_ID', label: 'Session cookie (mam_id)', hint: 'Paste just the value. Lectern keeps it refreshed after that.' },
     ],
@@ -178,8 +178,11 @@ function sourceLabel(v?: SettingView): string | undefined {
     <p class="panel-lead">{{ group.lead }}</p>
     <p v-if="group.id === 'mam' && mamInterface !== undefined" class="vpn" :class="{ 'vpn--off': !mamInterface }">
       <template v-if="mamInterface">Only contacts MAM while the <strong>{{ mamInterface }}</strong> VPN connection is up.</template>
-      <template v-else>No VPN check is set, so MAM could be contacted from your home address.</template>
-      Set with <code>MAM_REQUIRE_INTERFACE</code> in Lectern’s environment.
+      <template v-else>
+        No VPN check is set. That’s fine unless your MAM session is locked to a VPN; then set
+        <code>MAM_REQUIRE_INTERFACE</code> in Lectern’s environment so MAM is only contacted through it.
+      </template>
+      <template v-if="mamInterface">Set with <code>MAM_REQUIRE_INTERFACE</code> in Lectern’s environment.</template>
     </p>
 
     <form @submit.prevent="save(group, true)">
@@ -287,7 +290,7 @@ function sourceLabel(v?: SettingView): string | undefined {
 }
 
 .vpn code { font-size: 12px; }
-.vpn--off { border-color: #b3412f; }
+.vpn--off { color: var(--text-muted); }
 
 .advanced {
   margin: 0 0 12px;

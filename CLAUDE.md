@@ -31,7 +31,8 @@ version plus the rules for working in this repo.
 | Server | Node 22, Fastify, SQLite via better-sqlite3 |
 | Web | Vue 3 + Vite + vue-router, installable as a PWA (later) |
 | Shared | `packages/shared`: types and helpers used by both server and web |
-| Deploy | One Docker image. The server serves the built web app and the API on one port |
+| Deploy | One Docker image (`ghcr.io/<owner>/lectern`, built by `.github/workflows/image.yml` for amd64 and arm64). The server serves the built web app and the API on one port. Runs as `PUID`/`PGID` (`docker/entrypoint.sh`) |
+| Licence | GPL-3.0-or-later |
 
 ## Layout
 
@@ -40,8 +41,10 @@ packages/
   shared/   types (Book, Series, SearchResult...) and pure helpers
   server/   Fastify API, config, database, integrations (MAM, qBittorrent, Audiobookshelf)
   web/      Vue app
-docs/       DESIGN.md and other notes
-Dockerfile, docker-compose.example.yml, .env.example
+docs/       DESIGN.md, screenshots (made-up names only)
+docker/     entrypoint.sh (PUID/PGID)
+.github/    the image workflow
+Dockerfile, docker-compose.example.yml (plain), docker-compose.vpn.example.yml, .env.example
 ```
 
 ## Commands
@@ -209,7 +212,8 @@ docker build -t lectern .
    list, new releases
 7. Tidy up: an admin-only tool that fixes existing Audiobookshelf libraries
    (dry run + undo). Details ✅ (built, to test on a real library); folders later
-8. Polish, a one-command install and docs, then check with MAM before sharing
+8. Polish, a one-command install and docs, then check with MAM before sharing.
+   README, published image, PUID/PGID and the hardlink check ✅
 
 ## Brand
 

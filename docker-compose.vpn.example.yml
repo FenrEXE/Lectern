@@ -1,0 +1,59 @@
+# For MAM sessions locked to a VPN: Lectern joins the network of a qBittorrent
+# container that has a VPN built in (hotio's image here; Gluetun works the same
+# way), so all of its MAM traffic leaves through the VPN.
+#
+# Differences from docker-compose.example.yml:
+#   - Lectern has no ports of its own; its page is published on the VPN
+#     container's ports (8787 below), and qBittorrent is at http://localhost:8080.
+#   - MAM_REQUIRE_INTERFACE=wg0 in .env: Lectern refuses to contact MAM if the
+#     tunnel is down, so your home IP is never used by accident.
+#   - Container names may not resolve inside the VPN (DNS goes through it).
+#     Reach Audiobookshelf by the Docker network's gateway and its published
+#     port instead, e.g. http://172.19.0.1:13378 (see `docker network inspect`).
+services:
+  qbittorrent:
+    image: ghcr.io/hotio/qbittorrent:release
+    container_name: qbittorrent
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    environment:
+      PUID: 1000
+      PGID: 1000
+      WEBUI_PORTS: 8080/tcp
+      VPN_ENABLED: "true"
+      VPN_CONF: wg0
+      VPN_PROVIDER: generic
+      VPN_LAN_NETWORK: 192.168.0.0/16          # your home network
+      VPN_EXPOSE_PORTS_ON_LAN: 8787/tcp        # Lectern's page
+    ports:
+      - "8080:8080"
+      - "8787:8787"                             # Lectern, through this container
+    volumes:
+      - ./qbittorrent:/config                   # put your WireGuard wg0.conf in /config/wireguard
+      - /mnt/media:/media
+
+  lectern:
+    image: ghcr.io/fenrexe/lectern:latest
+    container_name: lectern
+    restart: unless-stopped
+    network_mode: "service:qbittorrent"
+    depends_on:
+      - qbittorrent
+    env_file: .env          # PUID, PGID, TZ, MAM_REQUIRE_INTERFACE=wg0
+    volumes:
+      - ./lectern:/data
+      - /mnt/media:/media
+
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    restart: unless-stopped
+    ports:
+      - "13378:80"
+    volumes:
+      - ./audiobookshelf/config:/config
+      - ./audiobookshelf/metadata:/metadata
+      - /mnt/media:/media

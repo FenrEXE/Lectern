@@ -1,15 +1,54 @@
-# Example for running Lectern next to qBittorrent and Audiobookshelf.
-# Copy to docker-compose.yml, put your settings in .env (see .env.example),
-# and adjust the data folder. No published image yet, so it builds from source.
+# Lectern next to qBittorrent and Audiobookshelf.
+#
+# The one rule that matters: Lectern must see your downloads and your
+# libraries through ONE shared folder, at the same path qBittorrent uses.
+# That's what lets it hardlink finished books into your library (no extra
+# space, and the torrent keeps seeding). Below, everything lives under
+# /mnt/media on the host and /media inside every container.
+#
+#   /mnt/media/torrents      qBittorrent saves here
+#   /mnt/media/audiobooks    an Audiobookshelf library
+#   /mnt/media/ebooks        another one (optional)
+#
+# Then open http://<server>:8787, enter the setup code from `docker logs lectern`,
+# and fill in Settings → Connections.
+#
+# MAM session locked to a VPN? See docker-compose.vpn.example.yml instead.
 services:
   lectern:
-    build: .
+    image: ghcr.io/fenrexe/lectern:latest
     container_name: lectern
     restart: unless-stopped
     ports:
       - "8787:8787"
-    env_file: .env
-    environment:
-      DATA_DIR: /data
+    env_file: .env          # PUID, PGID, TZ (see .env.example)
     volumes:
-      - ./data:/data
+      - ./lectern:/data      # Lectern's database and cover cache
+      - /mnt/media:/media    # downloads AND libraries, one mount
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    environment:
+      PUID: 1000
+      PGID: 1000
+      WEBUI_PORT: 8080
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    volumes:
+      - ./qbittorrent:/config
+      - /mnt/media:/media    # same path as Lectern
+
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    restart: unless-stopped
+    ports:
+      - "13378:80"
+    volumes:
+      - ./audiobookshelf/config:/config
+      - ./audiobookshelf/metadata:/metadata
+      - /mnt/media:/media    # libraries at /media/audiobooks and /media/ebooks
